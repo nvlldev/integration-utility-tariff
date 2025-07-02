@@ -3,17 +3,11 @@
     "step": {
       "user": {
         "title": "Configure Xcel Energy Tariff",
-        "description": "Select your state and service type.",
+        "description": "Select your state, service type, and setup preference.",
         "data": {
           "state": "State",
-          "service_type": "Service Type"
-        }
-      },
-      "configure_advanced": {
-        "title": "Setup Complete",
-        "description": "Your integration is ready with default settings:\n• Rate Plan: {default_rate}\n• Update Frequency: Weekly\n• Cost Sensors: Enabled\n\nWould you like to configure advanced options?",
-        "data": {
-          "configure_advanced": "Configure Advanced Options"
+          "service_type": "Service Type",
+          "setup_type": "Setup Type"
         }
       },
       "rate_plan": {
@@ -85,6 +79,18 @@
           "custom_holidays": "Custom Holidays (comma-separated dates)"
         }
       }
+    }
+  },
+  "repairs": {
+    "pdf_error": {
+      "title": "Xcel Energy Tariff PDF Error",
+      "description": "Failed to download or parse the tariff PDF for {name}. Error: {error}"
+    }
+  },
+  "issues": {
+    "pdf_error": {
+      "title": "PDF Download/Parse Error",
+      "description": "The tariff PDF could not be processed. You can retry, use fallback rates, or enter rates manually."
     }
   }
 }

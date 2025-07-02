@@ -120,6 +120,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         options,
     )
     
+    # Store config entry reference for repair flow
+    tariff_manager._config_entry = entry
+    
     # Initialize tariff manager asynchronously
     await tariff_manager.async_initialize()
     

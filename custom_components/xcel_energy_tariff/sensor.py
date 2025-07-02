@@ -55,6 +55,7 @@ async def async_setup_entry(
             XcelHourlyCostSensor(dynamic_coordinator, config_entry),
             XcelDailyCostSensor(dynamic_coordinator, config_entry),
             XcelMonthlyCostSensor(dynamic_coordinator, config_entry),
+            XcelPredictedBillSensor(dynamic_coordinator, config_entry),
         ])
     
     # Status and info sensors
@@ -378,6 +379,76 @@ class XcelMonthlyCostSensor(XcelSensorBase):
             attrs["daily_kwh_used"] = costs.get("daily_kwh_used")
         else:
             attrs["average_daily_usage"] = self._config_entry.options.get("average_daily_usage", 30.0)
+        return attrs
+
+
+class XcelPredictedBillSensor(XcelSensorBase):
+    """Sensor for predicted monthly bill based on current usage patterns."""
+    
+    def __init__(self, coordinator, config_entry):
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, "predicted_bill", "Predicted Monthly Bill")
+        self._attr_native_unit_of_measurement = CURRENCY_DOLLAR
+        self._attr_suggested_display_precision = 2
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:currency-usd-circle-outline"
+    
+    @property
+    def native_value(self) -> StateType:
+        """Return the predicted monthly bill."""
+        costs = self.coordinator.data.get("cost_projections", {})
+        if not costs.get("available"):
+            return None
+            
+        # Get current date info
+        now = dt_util.now()
+        days_in_month = 30  # Simplified, could be more accurate
+        day_of_month = now.day
+        days_remaining = days_in_month - day_of_month
+        
+        # Get current month-to-date cost
+        daily_cost = costs.get("daily_cost_estimate", 0)
+        fixed_monthly = costs.get("fixed_charges_monthly", 0)
+        
+        # Calculate month-to-date cost (approximate)
+        mtd_cost = daily_cost * day_of_month
+        
+        # Calculate average daily cost over last 7 days (if available)
+        # For now, use the current daily cost as average
+        avg_daily_cost = daily_cost
+        
+        # Project remaining month
+        projected_remaining = avg_daily_cost * days_remaining
+        
+        # Total predicted bill
+        predicted_total = mtd_cost + projected_remaining + fixed_monthly
+        
+        return round(predicted_total, 2)
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        costs = self.coordinator.data.get("cost_projections", {})
+        now = dt_util.now()
+        days_in_month = 30
+        day_of_month = now.day
+        days_remaining = days_in_month - day_of_month
+        
+        attrs = {
+            "days_elapsed": day_of_month,
+            "days_remaining": days_remaining,
+            "billing_cycle_progress": f"{round((day_of_month / days_in_month) * 100)}%",
+            "includes_fixed_charges": True,
+            "prediction_method": "daily_average",
+        }
+        
+        if costs.get("available"):
+            daily_cost = costs.get("daily_cost_estimate", 0)
+            attrs["month_to_date_estimate"] = round(daily_cost * day_of_month, 2)
+            attrs["remaining_estimate"] = round(daily_cost * days_remaining, 2)
+            attrs["fixed_charges"] = costs.get("fixed_charges_monthly", 0)
+            attrs["consumption_source"] = costs.get("consumption_source", "manual")
+            
         return attrs
 
 

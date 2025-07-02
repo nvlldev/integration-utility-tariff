@@ -231,9 +231,31 @@ class XcelTariffManager:
                 
         except aiohttp.ClientError as e:
             _LOGGER.error("Failed to download PDF: %s", e)
+            
+            # Create repair issue if we have a config entry
+            if hasattr(self, '_config_entry') and self._config_entry:
+                from .repairs import async_create_repair_issue
+                async_create_repair_issue(
+                    self.hass,
+                    self._config_entry,
+                    "pdf_error",
+                    f"Network error: {e}"
+                )
+            
             return False
         except Exception as e:
             _LOGGER.error("Unexpected error downloading PDF: %s", e)
+            
+            # Create repair issue if we have a config entry
+            if hasattr(self, '_config_entry') and self._config_entry:
+                from .repairs import async_create_repair_issue
+                async_create_repair_issue(
+                    self.hass,
+                    self._config_entry,
+                    "pdf_error",
+                    f"Download error: {e}"
+                )
+            
             return False
             
     async def _parse_pdf(self) -> None:
@@ -274,6 +296,16 @@ class XcelTariffManager:
             
         except Exception as e:
             _LOGGER.error("Failed to parse PDF: %s", e, exc_info=True)
+            
+            # Create repair issue if we have a config entry
+            if hasattr(self, '_config_entry') and self._config_entry:
+                from .repairs import async_create_repair_issue
+                async_create_repair_issue(
+                    self.hass,
+                    self._config_entry,
+                    "pdf_error",
+                    str(e)
+                )
             
     def _extract_all_data_from_pdf(self) -> dict[str, Any]:
         """Extract all available data from PDF."""

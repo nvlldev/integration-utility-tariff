@@ -92,13 +92,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     self._data["rate_schedule"] = "residential_gas"
                 
-                # Ask if user wants advanced configuration
-                return await self.async_step_configure_advanced()
+                # Check setup type
+                setup_type = user_input.get("setup_type", "quick")
+                if setup_type == "quick":
+                    # Quick setup - use all defaults
+                    self._options = {
+                        "rate_schedule": self._data["rate_schedule"],
+                        "update_frequency": "weekly",
+                        "summer_months": "6,7,8,9",
+                        "enable_cost_sensors": True,
+                        "consumption_entity": "none",
+                        "average_daily_usage": 30.0,
+                        "include_additional_charges": True,
+                    }
+                    return self.async_create_entry(
+                        title=self._data["title"],
+                        data=self._data,
+                        options=self._options
+                    )
+                else:
+                    # Custom setup
+                    return await self.async_step_rate_plan()
 
         schema = vol.Schema(
             {
                 vol.Required("state"): vol.In(list(STATES.keys())),
                 vol.Required("service_type", default=SERVICE_TYPE_ELECTRIC): vol.In(list(SERVICE_TYPES.keys())),
+                vol.Required("setup_type", default="quick"): vol.In({
+                    "quick": "Quick Setup (Recommended)",
+                    "custom": "Custom Setup"
+                }),
             }
         )
 
@@ -106,44 +129,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=schema, errors=errors
         )
 
-    async def async_step_configure_advanced(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Ask if user wants to configure advanced options."""
-        if user_input is not None:
-            if user_input.get("configure_advanced", False):
-                # User wants advanced configuration
-                return await self.async_step_rate_plan()
-            else:
-                # Use all defaults - create entry
-                self._options = {
-                    "rate_schedule": self._data["rate_schedule"],
-                    "update_frequency": "weekly",
-                    "summer_months": "6,7,8,9",
-                    "enable_cost_sensors": True,
-                    "consumption_entity": "none",
-                    "average_daily_usage": 30.0,
-                    "include_additional_charges": True,
-                }
-                return self.async_create_entry(
-                    title=self._data["title"],
-                    data=self._data,
-                    options=self._options
-                )
-
-        schema = vol.Schema(
-            {
-                vol.Required("configure_advanced", default=False): cv.boolean,
-            }
-        )
-
-        return self.async_show_form(
-            step_id="configure_advanced",
-            data_schema=schema,
-            description_placeholders={
-                "default_rate": self._data["rate_schedule"].replace("_", " ").title(),
-            }
-        )
 
     async def async_step_rate_plan(
         self, user_input: dict[str, Any] | None = None
