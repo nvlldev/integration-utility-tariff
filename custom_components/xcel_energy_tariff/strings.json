@@ -9,12 +9,20 @@
           "service_type": "Service Type"
         }
       },
+      "configure_advanced": {
+        "title": "Setup Complete",
+        "description": "Your integration is ready with default settings:\n• Rate Plan: {default_rate}\n• Update Frequency: Weekly\n• Cost Sensors: Enabled\n\nWould you like to configure advanced options?",
+        "data": {
+          "configure_advanced": "Configure Advanced Options"
+        }
+      },
       "rate_plan": {
         "title": "Select Rate Plan",
-        "description": "Choose your {service_type} rate schedule and update frequency.",
+        "description": "Choose your {service_type} rate schedule.",
         "data": {
           "rate_schedule": "Rate Schedule",
-          "update_frequency": "PDF Update Frequency"
+          "update_frequency": "PDF Update Frequency",
+          "configure_more": "Configure Additional Options"
         }
       },
       "tou_config": {
@@ -25,7 +33,8 @@
           "peak_end": "Peak Period End Time",
           "shoulder_start": "Shoulder Period Start Time",
           "shoulder_end": "Shoulder Period End Time",
-          "custom_holidays": "Custom Holidays (comma-separated dates)"
+          "custom_holidays": "Custom Holidays (comma-separated dates)",
+          "skip_additional": "Skip Additional Options"
         }
       },
       "additional_options": {
@@ -34,6 +43,7 @@
         "data": {
           "summer_months": "Summer Months (comma-separated)",
           "enable_cost_sensors": "Enable Cost Projection Sensors",
+          "consumption_entity": "Power Consumption Sensor",
           "average_daily_usage": "Average Daily Usage (kWh)",
           "include_additional_charges": "Include Additional Charges in Rate"
         }
@@ -52,13 +62,21 @@
     "step": {
       "init": {
         "title": "Xcel Energy Tariff Options",
-        "description": "Configure your rate plan and calculation options.",
+        "description": "{info}",
         "data": {
           "rate_schedule": "Rate Schedule",
+          "consumption_entity": "Power Consumption Sensor",
+          "average_daily_usage": "Average Daily Usage (kWh)",
+          "enable_cost_sensors": "Enable Cost Projection Sensors",
+          "show_advanced": "Show Advanced Options"
+        }
+      },
+      "advanced": {
+        "title": "Advanced Options",
+        "description": "{info}",
+        "data": {
           "update_frequency": "PDF Update Frequency",
           "summer_months": "Summer Months (comma-separated)",
-          "enable_cost_sensors": "Enable Cost Projection Sensors",
-          "average_daily_usage": "Average Daily Usage (kWh)",
           "include_additional_charges": "Include Additional Charges in Rate",
           "peak_start": "Peak Period Start Time",
           "peak_end": "Peak Period End Time",

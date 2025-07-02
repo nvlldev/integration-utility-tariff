@@ -298,6 +298,18 @@ class XcelHourlyCostSensor(XcelSensorBase):
         if costs.get("available"):
             return costs.get("hourly_cost_estimate")
         return None
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        costs = self.coordinator.data.get("cost_projections", {})
+        attrs = {}
+        if costs.get("available"):
+            attrs["consumption_source"] = costs.get("consumption_source", "manual")
+            if costs.get("consumption_entity"):
+                attrs["consumption_entity"] = costs.get("consumption_entity")
+            attrs["daily_kwh_used"] = costs.get("daily_kwh_used")
+        return attrs
 
 
 class XcelDailyCostSensor(XcelSensorBase):
@@ -318,6 +330,18 @@ class XcelDailyCostSensor(XcelSensorBase):
         if costs.get("available"):
             return costs.get("daily_cost_estimate")
         return None
+    
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        costs = self.coordinator.data.get("cost_projections", {})
+        attrs = {}
+        if costs.get("available"):
+            attrs["consumption_source"] = costs.get("consumption_source", "manual")
+            if costs.get("consumption_entity"):
+                attrs["consumption_entity"] = costs.get("consumption_entity")
+            attrs["daily_kwh_used"] = costs.get("daily_kwh_used")
+        return attrs
 
 
 class XcelMonthlyCostSensor(XcelSensorBase):
@@ -343,11 +367,18 @@ class XcelMonthlyCostSensor(XcelSensorBase):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
         costs = self.coordinator.data.get("cost_projections", {})
-        return {
+        attrs = {
             "includes_fixed_charges": True,
             "fixed_charges": costs.get("fixed_charges_monthly", 0),
-            "average_daily_usage": self._config_entry.options.get("average_daily_usage", 30.0),
         }
+        if costs.get("available"):
+            attrs["consumption_source"] = costs.get("consumption_source", "manual")
+            if costs.get("consumption_entity"):
+                attrs["consumption_entity"] = costs.get("consumption_entity")
+            attrs["daily_kwh_used"] = costs.get("daily_kwh_used")
+        else:
+            attrs["average_daily_usage"] = self._config_entry.options.get("average_daily_usage", 30.0)
+        return attrs
 
 
 class XcelDataSourceSensor(XcelSensorBase):

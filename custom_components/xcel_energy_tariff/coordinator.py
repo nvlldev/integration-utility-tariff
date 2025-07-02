@@ -223,12 +223,59 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
         if not current_rate:
             return {"available": False}
         
-        # Get average daily usage from options (default 30 kWh)
-        avg_daily_kwh = 30.0  # Will be configurable
+        # Get consumption data
+        consumption_entity = self.tariff_manager.options.get("consumption_entity", "none")
+        avg_daily_kwh = self.tariff_manager.options.get("average_daily_usage", 30.0)
+        
+        # Try to get actual consumption from entity
+        actual_daily_kwh = None
+        consumption_source = "manual"
+        
+        if consumption_entity and consumption_entity != "none":
+            state = self.hass.states.get(consumption_entity)
+            if state and state.state not in ["unknown", "unavailable"]:
+                try:
+                    # Get the consumption value
+                    consumption_value = float(state.state)
+                    unit = state.attributes.get("unit_of_measurement", "kWh")
+                    
+                    # Convert to kWh if needed
+                    if unit == "Wh":
+                        consumption_value = consumption_value / 1000
+                    
+                    # Check if this is a daily, monthly, or yearly sensor
+                    state_class = state.attributes.get("state_class")
+                    friendly_name = state.attributes.get("friendly_name", "").lower()
+                    
+                    if "daily" in friendly_name or state_class == "total_increasing":
+                        # This appears to be a daily sensor
+                        actual_daily_kwh = consumption_value
+                        consumption_source = "entity_daily"
+                    elif "monthly" in friendly_name:
+                        # Monthly sensor - divide by days in current month
+                        now = dt_util.now()
+                        days_in_month = 30  # Simplified, could be more accurate
+                        actual_daily_kwh = consumption_value / days_in_month
+                        consumption_source = "entity_monthly"
+                    elif "yearly" in friendly_name or "annual" in friendly_name:
+                        # Yearly sensor - divide by 365
+                        actual_daily_kwh = consumption_value / 365
+                        consumption_source = "entity_yearly"
+                    else:
+                        # Assume it's a cumulative total, use rate of change
+                        # This would need more sophisticated logic in practice
+                        actual_daily_kwh = avg_daily_kwh
+                        consumption_source = "manual"
+                        
+                except (ValueError, TypeError):
+                    _LOGGER.warning("Could not parse consumption entity value: %s", state.state)
+        
+        # Use actual consumption if available, otherwise fall back to manual
+        daily_kwh = actual_daily_kwh if actual_daily_kwh is not None else avg_daily_kwh
         
         # Calculate costs
-        hourly_cost = current_rate * (avg_daily_kwh / 24)
-        daily_cost = current_rate * avg_daily_kwh
+        hourly_cost = current_rate * (daily_kwh / 24)
+        daily_cost = current_rate * daily_kwh
         monthly_cost = daily_cost * 30
         
         # Add fixed charges
@@ -241,4 +288,7 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
             "daily_cost_estimate": round(daily_cost, 2),
             "monthly_cost_estimate": round(monthly_cost + fixed_monthly, 2),
             "fixed_charges_monthly": fixed_monthly,
+            "daily_kwh_used": round(daily_kwh, 2),
+            "consumption_source": consumption_source,
+            "consumption_entity": consumption_entity if consumption_entity != "none" else None,
         }

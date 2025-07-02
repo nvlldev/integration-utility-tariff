@@ -10,6 +10,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 import homeassistant.helpers.config_validation as cv
 
 from .const import (
@@ -81,10 +82,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                # Store basic data and proceed to rate selection
+                # Store basic data
                 self._data = user_input
                 self._data["title"] = info["title"]
-                return await self.async_step_rate_plan()
+                
+                # Set default rate schedule based on service type
+                if self._data["service_type"] == SERVICE_TYPE_ELECTRIC:
+                    self._data["rate_schedule"] = "residential"
+                else:
+                    self._data["rate_schedule"] = "residential_gas"
+                
+                # Ask if user wants advanced configuration
+                return await self.async_step_configure_advanced()
 
         schema = vol.Schema(
             {
@@ -97,13 +106,69 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=schema, errors=errors
         )
 
+    async def async_step_configure_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Ask if user wants to configure advanced options."""
+        if user_input is not None:
+            if user_input.get("configure_advanced", False):
+                # User wants advanced configuration
+                return await self.async_step_rate_plan()
+            else:
+                # Use all defaults - create entry
+                self._options = {
+                    "rate_schedule": self._data["rate_schedule"],
+                    "update_frequency": "weekly",
+                    "summer_months": "6,7,8,9",
+                    "enable_cost_sensors": True,
+                    "consumption_entity": "none",
+                    "average_daily_usage": 30.0,
+                    "include_additional_charges": True,
+                }
+                return self.async_create_entry(
+                    title=self._data["title"],
+                    data=self._data,
+                    options=self._options
+                )
+
+        schema = vol.Schema(
+            {
+                vol.Required("configure_advanced", default=False): cv.boolean,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="configure_advanced",
+            data_schema=schema,
+            description_placeholders={
+                "default_rate": self._data["rate_schedule"].replace("_", " ").title(),
+            }
+        )
+
     async def async_step_rate_plan(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle rate plan selection."""
         if user_input is not None:
             self._data["rate_schedule"] = user_input["rate_schedule"]
-            self._options.update(user_input)
+            self._options["rate_schedule"] = user_input["rate_schedule"]
+            self._options["update_frequency"] = user_input.get("update_frequency", "weekly")
+            
+            # Check if user wants to configure more options
+            if not user_input.get("configure_more", True):
+                # Use defaults for everything else
+                self._options.update({
+                    "summer_months": "6,7,8,9",
+                    "enable_cost_sensors": True,
+                    "consumption_entity": "none",
+                    "average_daily_usage": 30.0,
+                    "include_additional_charges": True,
+                })
+                return self.async_create_entry(
+                    title=self._data["title"],
+                    data=self._data,
+                    options=self._options
+                )
             
             # If TOU rate, go to TOU configuration
             if "tou" in user_input["rate_schedule"]:
@@ -113,15 +178,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Build rate options based on service type
         rate_options = get_rate_options(self._data["service_type"])
-        default_rate = "residential" if self._data["service_type"] == SERVICE_TYPE_ELECTRIC else "residential_gas"
+        default_rate = self._data.get("rate_schedule", "residential" if self._data["service_type"] == SERVICE_TYPE_ELECTRIC else "residential_gas")
 
         schema = vol.Schema(
             {
                 vol.Required("rate_schedule", default=default_rate): vol.In(rate_options),
-                vol.Required("update_frequency", default="weekly"): vol.In({
+                vol.Optional("update_frequency", default="weekly"): vol.In({
                     "daily": "Daily", 
                     "weekly": "Weekly"
                 }),
+                vol.Optional("configure_more", default=True): cv.boolean,
             }
         )
 
@@ -136,7 +202,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle TOU configuration."""
         if user_input is not None:
+            # Remove the skip_additional flag before updating options
+            skip_additional = user_input.pop("skip_additional", False)
             self._options.update(user_input)
+            
+            if skip_additional:
+                # Use defaults for remaining options
+                self._options.update({
+                    "summer_months": "6,7,8,9",
+                    "enable_cost_sensors": True,
+                    "consumption_entity": "none",
+                    "average_daily_usage": 30.0,
+                    "include_additional_charges": True,
+                })
+                return self.async_create_entry(
+                    title=self._data["title"],
+                    data=self._data,
+                    options=self._options
+                )
+            
             return await self.async_step_additional_options()
 
         schema = vol.Schema(
@@ -145,7 +229,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("peak_end", default="19:00"): cv.string,
                 vol.Optional("shoulder_start", default="13:00"): cv.string,
                 vol.Optional("shoulder_end", default="15:00"): cv.string,
-                vol.Optional("custom_holidays", default=""): cv.string,
+                vol.Optional("custom_holidays"): cv.string,
+                vol.Optional("skip_additional", default=False): cv.boolean,
             }
         )
 
@@ -153,7 +238,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="tou_config",
             data_schema=schema,
             description_placeholders={
-                "info": "Configure Time-of-Use schedule. Times are in 24-hour format (HH:MM)."
+                "info": "Configure Time-of-Use schedule (optional). Times are in 24-hour format (HH:MM)."
             }
         )
 
@@ -171,10 +256,40 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options=self._options
             )
 
+        # Get list of sensor entities that could be power consumption
+        entity_registry = er.async_get(self.hass)
+        entities = []
+        
+        # Check all sensor states, not just registry
+        for state in self.hass.states.async_all("sensor"):
+            if state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                entities.append(state.entity_id)
+        
+        # Also check entity registry for additional sensors
+        for entity_id, entity in entity_registry.entities.items():
+            # Look for entities that might be power consumption sensors
+            if entity.domain == "sensor" and entity.device_class in ["energy", "power"]:
+                if entity_id not in entities:
+                    state = self.hass.states.get(entity_id)
+                    if state and state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                        entities.append(entity_id)
+        
+        # Sort entities for better display
+        entities.sort()
+        
+        # Add "None" option for manual entry
+        entity_options = {"none": "Manual Entry (Average Daily Usage)"}
+        for entity_id in entities:
+            state = self.hass.states.get(entity_id)
+            if state:
+                name = state.attributes.get("friendly_name", entity_id)
+                entity_options[entity_id] = name
+
         schema = vol.Schema(
             {
                 vol.Optional("summer_months", default="6,7,8,9"): cv.string,
                 vol.Optional("enable_cost_sensors", default=True): cv.boolean,
+                vol.Optional("consumption_entity", default="none"): vol.In(entity_options),
                 vol.Optional("average_daily_usage", default=30.0): cv.positive_float,
                 vol.Optional("include_additional_charges", default=True): cv.boolean,
             }
@@ -199,9 +314,19 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Manage the options - simplified view."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if user_input.get("show_advanced", False):
+                return await self.async_step_advanced()
+            
+            # Remove the flag before saving
+            user_input.pop("show_advanced", None)
+            
+            # Merge with existing options to preserve advanced settings
+            updated_options = dict(self.config_entry.options)
+            updated_options.update(user_input)
+            
+            return self.async_create_entry(title="", data=updated_options)
 
         # Get current values
         current_schedule = self.config_entry.options.get(
@@ -213,9 +338,87 @@ class OptionsFlow(config_entries.OptionsFlow):
         service_type = self.config_entry.data["service_type"]
         rate_options = get_rate_options(service_type)
 
+        # Get list of sensor entities that could be power consumption
+        entity_registry = er.async_get(self.hass)
+        entities = []
+        
+        # Check all sensor states, not just registry
+        for state in self.hass.states.async_all("sensor"):
+            if state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                entities.append(state.entity_id)
+        
+        # Also check entity registry for additional sensors
+        for entity_id, entity in entity_registry.entities.items():
+            # Look for entities that might be power consumption sensors
+            if entity.domain == "sensor" and entity.device_class in ["energy", "power"]:
+                if entity_id not in entities:
+                    state = self.hass.states.get(entity_id)
+                    if state and state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                        entities.append(entity_id)
+        
+        # Sort entities for better display
+        entities.sort()
+        
+        # Add "None" option for manual entry
+        entity_options = {"none": "Manual Entry (Average Daily Usage)"}
+        for entity_id in entities:
+            state = self.hass.states.get(entity_id)
+            if state:
+                name = state.attributes.get("friendly_name", entity_id)
+                entity_options[entity_id] = name
+
+        # Get current consumption entity
+        current_consumption_entity = self.config_entry.options.get("consumption_entity", "none")
+        if current_consumption_entity not in entity_options:
+            current_consumption_entity = "none"
+
+        # Simplified schema - only most important options
         schema = vol.Schema(
             {
                 vol.Required("rate_schedule", default=current_schedule): vol.In(rate_options),
+                vol.Optional(
+                    "consumption_entity",
+                    default=current_consumption_entity
+                ): vol.In(entity_options),
+                vol.Optional(
+                    "average_daily_usage",
+                    default=self.config_entry.options.get("average_daily_usage", 30.0)
+                ): cv.positive_float,
+                vol.Optional(
+                    "enable_cost_sensors",
+                    default=self.config_entry.options.get("enable_cost_sensors", True)
+                ): cv.boolean,
+                vol.Optional("show_advanced", default=False): cv.boolean,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init", 
+            data_schema=schema,
+            description_placeholders={
+                "info": "Configure basic options. Enable 'Show Advanced Options' for more settings."
+            }
+        )
+    
+    async def async_step_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle advanced options."""
+        if user_input is not None:
+            # Merge with existing options
+            updated_options = dict(self.config_entry.options)
+            updated_options.update(user_input)
+            
+            return self.async_create_entry(title="", data=updated_options)
+
+        # Get current values
+        current_schedule = self.config_entry.options.get(
+            "rate_schedule", 
+            self.config_entry.data.get("rate_schedule", "residential")
+        )
+
+        schema = vol.Schema(
+            {
                 vol.Required(
                     "update_frequency",
                     default=self.config_entry.options.get("update_frequency", "weekly")
@@ -224,14 +427,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                     "summer_months",
                     default=self.config_entry.options.get("summer_months", "6,7,8,9")
                 ): cv.string,
-                vol.Optional(
-                    "enable_cost_sensors",
-                    default=self.config_entry.options.get("enable_cost_sensors", True)
-                ): cv.boolean,
-                vol.Optional(
-                    "average_daily_usage",
-                    default=self.config_entry.options.get("average_daily_usage", 30.0)
-                ): cv.positive_float,
                 vol.Optional(
                     "include_additional_charges",
                     default=self.config_entry.options.get("include_additional_charges", True)
@@ -264,7 +459,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                 ): cv.string,
             })
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="advanced", 
+            data_schema=schema,
+            description_placeholders={
+                "info": "Configure advanced options."
+            }
+        )
 
 
 class CannotConnect(HomeAssistantError):
