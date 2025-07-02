@@ -1,0 +1,95 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Home Assistant
+config/
+*.db
+*.log
+.HA_VERSION
+.cloud/
+.storage/
+custom_components/*/cache/
+
+# Project specific
+backup_old/
+*.pdf
+tests/resources/*.pdf
+!tests/resources/test_co_electric.pdf
+test_*.py
+!tests/test_*.py
+extract_*.py
+find_*.py
+parse_*.py
+check_*.py
+update_*.py
+migrate_*.sh
+*_RATES.md
+*_SUMMARY.md
+ARCHITECTURE*.md
+OPTIMIZATIONS.md
+TASK_SUMMARY.md
+UPDATE_SUMMARY.md
+V2_IMPROVEMENTS.md
+extracted_*.json
+extracted_*.txt
+
+# Keep important test files
+!tests/test_config_flow_simple.py
+!tests/test_fallback_rates.py
+!tests/test_integration.py
+!tests/test_pdf_extraction.py
+!tests/test_season_extraction.py
+!tests/test_sensor.py
+!tests/test_tariff_manager.py

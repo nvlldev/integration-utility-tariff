@@ -1,0 +1,4 @@
+# Requirements for Xcel Energy Tariff Integration
+pypdf2==3.0.1
+aiohttp==3.9.1
+beautifulsoup4==4.12.2

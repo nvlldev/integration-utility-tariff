@@ -1,0 +1,10 @@
+# Testing requirements for Xcel Energy Tariff Integration
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+pytest-cov>=4.0.0
+
+# Integration requirements
+pypdf2==3.0.1
+beautifulsoup4==4.12.2
+aiohttp>=3.8.0

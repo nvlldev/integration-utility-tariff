@@ -1,0 +1,1 @@
+"""Tests for the Xcel Energy Tariff integration."""

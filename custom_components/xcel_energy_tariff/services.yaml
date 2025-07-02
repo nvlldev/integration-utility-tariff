@@ -1,0 +1,35 @@
+refresh_rates:
+  name: Refresh Rates
+  description: Force refresh of tariff rates from Xcel Energy PDFs
+  
+clear_cache:
+  name: Clear Cache
+  description: Clear all cached tariff data and PDFs
+  
+calculate_bill:
+  name: Calculate Bill
+  description: Calculate estimated bill for given usage
+  fields:
+    kwh_usage:
+      name: kWh Usage
+      description: Total kilowatt-hours used
+      required: true
+      example: 750
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.1
+          unit_of_measurement: kWh
+    days:
+      name: Days
+      description: Number of days in billing period
+      required: false
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 366
+          step: 1
+          unit_of_measurement: days
