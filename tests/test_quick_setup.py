@@ -14,10 +14,16 @@ async def test_quick_setup_electric(hass: HomeAssistant):
     flow = ConfigFlow()
     flow.hass = hass
     
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
     # Single step setup with quick option
     result = await flow.async_step_user({
         "state": "CO",
         "service_type": SERVICE_TYPE_ELECTRIC,
+        "rate_schedule": "residential",
+        "consumption_entity": "none",
+        "average_daily_usage": 30.0,
         "setup_type": "quick"
     })
     
@@ -43,9 +49,15 @@ async def test_quick_setup_gas(hass: HomeAssistant):
     flow = ConfigFlow()
     flow.hass = hass
     
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
     result = await flow.async_step_user({
         "state": "MN",
         "service_type": SERVICE_TYPE_GAS,
+        "rate_schedule": "residential_gas",
+        "consumption_entity": "none",
+        "average_daily_usage": 30.0,
         "setup_type": "quick"
     })
     
@@ -55,30 +67,55 @@ async def test_quick_setup_gas(hass: HomeAssistant):
     assert result["options"]["rate_schedule"] == "residential_gas"
 
 
+async def test_quick_setup_tou(hass: HomeAssistant):
+    """Test quick setup with TOU rate plan."""
+    flow = ConfigFlow()
+    flow.hass = hass
+    
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
+    result = await flow.async_step_user({
+        "state": "CO",
+        "service_type": SERVICE_TYPE_ELECTRIC,
+        "rate_schedule": "residential_tou",
+        "consumption_entity": "none",
+        "average_daily_usage": 35.0,
+        "setup_type": "quick"
+    })
+    
+    # Should create entry immediately with TOU defaults
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["options"]["rate_schedule"] == "residential_tou"
+    assert result["options"]["average_daily_usage"] == 35.0
+    
+    # Check TOU defaults were added
+    assert result["options"]["peak_start"] == "15:00"
+    assert result["options"]["peak_end"] == "19:00"
+    assert result["options"]["shoulder_start"] == "13:00"
+    assert result["options"]["shoulder_end"] == "15:00"
+    assert result["options"]["custom_holidays"] == ""
+
+
 async def test_custom_setup_flow(hass: HomeAssistant):
     """Test custom setup flow path."""
     flow = ConfigFlow()
     flow.hass = hass
     
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
     # Choose custom setup
     result = await flow.async_step_user({
         "state": "WI",
         "service_type": SERVICE_TYPE_ELECTRIC,
+        "rate_schedule": "residential_tou",
+        "consumption_entity": "none",
+        "average_daily_usage": 30.0,
         "setup_type": "custom"
     })
     
-    # Should go to rate plan step
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "rate_plan"
-    
-    # Can continue with custom configuration
-    result = await flow.async_step_rate_plan({
-        "rate_schedule": "residential_tou",
-        "update_frequency": "daily",
-        "configure_more": True
-    })
-    
-    # Should go to TOU config
+    # Should go to TOU config since TOU was selected
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "tou_config"
 
@@ -88,10 +125,16 @@ async def test_gas_validation_error(hass: HomeAssistant):
     flow = ConfigFlow()
     flow.hass = hass
     
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
     # Try gas service in Texas (not supported)
     result = await flow.async_step_user({
         "state": "TX",
         "service_type": SERVICE_TYPE_GAS,
+        "rate_schedule": "residential_gas",
+        "consumption_entity": "none", 
+        "average_daily_usage": 30.0,
         "setup_type": "quick"
     })
     

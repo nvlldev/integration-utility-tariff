@@ -3,10 +3,13 @@
     "step": {
       "user": {
         "title": "Configure Xcel Energy Tariff",
-        "description": "Select your state, service type, and setup preference.",
+        "description": "Select your location and rate plan. Choose Quick Setup to complete configuration with sensible defaults.",
         "data": {
           "state": "State",
           "service_type": "Service Type",
+          "rate_schedule": "Rate Plan",
+          "consumption_entity": "Power Consumption Sensor",
+          "average_daily_usage": "Average Daily Usage (kWh)",
           "setup_type": "Setup Type"
         }
       },

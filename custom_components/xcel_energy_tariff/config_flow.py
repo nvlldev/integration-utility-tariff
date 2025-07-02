@@ -74,61 +74,129 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         
         if user_input is not None:
-            try:
-                info = await validate_input(self.hass, user_input)
-            except ValueError as exc:
-                errors["base"] = str(exc)
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
+            # Check if just changing service type (no setup_type means form reload)
+            if "setup_type" not in user_input:
+                # Form is being reloaded due to service type change
+                # Preserve the input and show form again with updated rate options
+                pass
             else:
-                # Store basic data
-                self._data = user_input
-                self._data["title"] = info["title"]
-                
-                # Set default rate schedule based on service type
-                if self._data["service_type"] == SERVICE_TYPE_ELECTRIC:
-                    self._data["rate_schedule"] = "residential"
+                try:
+                    info = await validate_input(self.hass, user_input)
+                except ValueError as exc:
+                    errors["base"] = str(exc)
+                except Exception:  # pylint: disable=broad-except
+                    _LOGGER.exception("Unexpected exception")
+                    errors["base"] = "unknown"
                 else:
-                    self._data["rate_schedule"] = "residential_gas"
-                
-                # Check setup type
-                setup_type = user_input.get("setup_type", "quick")
-                if setup_type == "quick":
-                    # Quick setup - use all defaults
-                    self._options = {
-                        "rate_schedule": self._data["rate_schedule"],
-                        "update_frequency": "weekly",
-                        "summer_months": "6,7,8,9",
-                        "enable_cost_sensors": True,
-                        "consumption_entity": "none",
-                        "average_daily_usage": 30.0,
-                        "include_additional_charges": True,
-                    }
-                    return self.async_create_entry(
-                        title=self._data["title"],
-                        data=self._data,
-                        options=self._options
-                    )
-                else:
-                    # Custom setup
-                    return await self.async_step_rate_plan()
+                    # Store basic data
+                    self._data = user_input
+                    self._data["title"] = info["title"]
+                    self._data["rate_schedule"] = user_input["rate_schedule"]
+                    
+                    # Check setup type
+                    setup_type = user_input.get("setup_type", "quick")
+                    if setup_type == "quick":
+                        # Quick setup - use provided values plus defaults
+                        self._options = {
+                            "rate_schedule": user_input["rate_schedule"],
+                            "update_frequency": "weekly",
+                            "summer_months": "6,7,8,9",
+                            "enable_cost_sensors": True,
+                            "consumption_entity": user_input.get("consumption_entity", "none"),
+                            "average_daily_usage": user_input.get("average_daily_usage", 30.0),
+                            "include_additional_charges": True,
+                        }
+                        
+                        # Add TOU defaults if TOU rate selected
+                        if "tou" in user_input["rate_schedule"]:
+                            self._options.update({
+                                "peak_start": "15:00",
+                                "peak_end": "19:00",
+                                "shoulder_start": "13:00",
+                                "shoulder_end": "15:00",
+                                "custom_holidays": "",
+                            })
+                        
+                        return self.async_create_entry(
+                            title=self._data["title"],
+                            data=self._data,
+                            options=self._options
+                        )
+                    else:
+                        # Custom setup - store rate schedule in options
+                        self._options = {"rate_schedule": user_input["rate_schedule"]}
+                        
+                        # Go to TOU config if needed, otherwise additional options
+                        if "tou" in user_input["rate_schedule"]:
+                            return await self.async_step_tou_config()
+                        else:
+                            return await self.async_step_additional_options()
 
-        schema = vol.Schema(
-            {
-                vol.Required("state"): vol.In(list(STATES.keys())),
-                vol.Required("service_type", default=SERVICE_TYPE_ELECTRIC): vol.In(list(SERVICE_TYPES.keys())),
-                vol.Required("setup_type", default="quick"): vol.In({
-                    "quick": "Quick Setup (Recommended)",
-                    "custom": "Custom Setup"
-                }),
+        # Build dynamic schema based on selected service type
+        service_type = user_input.get("service_type", SERVICE_TYPE_ELECTRIC) if user_input else SERVICE_TYPE_ELECTRIC
+        rate_options = get_rate_options(service_type)
+        default_rate = user_input.get("rate_schedule", "residential" if service_type == SERVICE_TYPE_ELECTRIC else "residential_gas") if user_input else "residential"
+        
+        # Get consumption entities
+        entities = self._get_consumption_entities()
+        entity_options = {"none": "Manual Entry (Average Daily Usage)"}
+        for entity_id in entities:
+            state = self.hass.states.get(entity_id)
+            if state:
+                name = state.attributes.get("friendly_name", entity_id)
+                entity_options[entity_id] = name
+
+        # Show/hide average daily usage based on consumption entity selection
+        consumption_entity = user_input.get("consumption_entity", "none") if user_input else "none"
+        
+        schema_dict = {
+            vol.Required("state", default=user_input.get("state") if user_input else None): vol.In(list(STATES.keys())),
+            vol.Required("service_type", default=service_type): vol.In(list(SERVICE_TYPES.keys())),
+            vol.Required("rate_schedule", default=default_rate): vol.In(rate_options),
+            vol.Optional("consumption_entity", default=consumption_entity): vol.In(entity_options),
+        }
+        
+        # Only show average daily usage if manual entry selected
+        if consumption_entity == "none":
+            schema_dict[vol.Optional("average_daily_usage", default=user_input.get("average_daily_usage", 30.0) if user_input else 30.0)] = cv.positive_float
+            
+        schema_dict[vol.Required("setup_type", default="quick")] = vol.In({
+            "quick": "Quick Setup (Recommended)",
+            "custom": "Custom Setup"
+        })
+
+        schema = vol.Schema(schema_dict)
+
+        return self.async_show_form(
+            step_id="user", 
+            data_schema=schema, 
+            errors=errors,
+            description_placeholders={
+                "info": "The average daily usage field is only needed if you select Manual Entry for consumption."
             }
         )
 
-        return self.async_show_form(
-            step_id="user", data_schema=schema, errors=errors
-        )
-
+    def _get_consumption_entities(self) -> list[str]:
+        """Get list of potential consumption entities."""
+        entities = []
+        
+        # Check all sensor states
+        for state in self.hass.states.async_all("sensor"):
+            if state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                entities.append(state.entity_id)
+        
+        # Also check entity registry
+        entity_registry = er.async_get(self.hass)
+        for entity_id, entity in entity_registry.entities.items():
+            if entity.domain == "sensor" and entity.device_class in ["energy", "power"]:
+                if entity_id not in entities:
+                    state = self.hass.states.get(entity_id)
+                    if state and state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
+                        entities.append(entity_id)
+        
+        # Sort for better display
+        entities.sort()
+        return entities
 
     async def async_step_rate_plan(
         self, user_input: dict[str, Any] | None = None
@@ -242,25 +310,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Get list of sensor entities that could be power consumption
-        entity_registry = er.async_get(self.hass)
-        entities = []
-        
-        # Check all sensor states, not just registry
-        for state in self.hass.states.async_all("sensor"):
-            if state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
-                entities.append(state.entity_id)
-        
-        # Also check entity registry for additional sensors
-        for entity_id, entity in entity_registry.entities.items():
-            # Look for entities that might be power consumption sensors
-            if entity.domain == "sensor" and entity.device_class in ["energy", "power"]:
-                if entity_id not in entities:
-                    state = self.hass.states.get(entity_id)
-                    if state and state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
-                        entities.append(entity_id)
-        
-        # Sort entities for better display
-        entities.sort()
+        entities = self._get_consumption_entities()
         
         # Add "None" option for manual entry
         entity_options = {"none": "Manual Entry (Average Daily Usage)"}
@@ -324,25 +374,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         rate_options = get_rate_options(service_type)
 
         # Get list of sensor entities that could be power consumption
-        entity_registry = er.async_get(self.hass)
-        entities = []
-        
-        # Check all sensor states, not just registry
-        for state in self.hass.states.async_all("sensor"):
-            if state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
-                entities.append(state.entity_id)
-        
-        # Also check entity registry for additional sensors
-        for entity_id, entity in entity_registry.entities.items():
-            # Look for entities that might be power consumption sensors
-            if entity.domain == "sensor" and entity.device_class in ["energy", "power"]:
-                if entity_id not in entities:
-                    state = self.hass.states.get(entity_id)
-                    if state and state.attributes.get("unit_of_measurement") in ["kWh", "Wh"]:
-                        entities.append(entity_id)
-        
-        # Sort entities for better display
-        entities.sort()
+        entities = self._get_consumption_entities()
         
         # Add "None" option for manual entry
         entity_options = {"none": "Manual Entry (Average Daily Usage)"}
