@@ -89,6 +89,7 @@ extracted_*.txt
 SESSION_SUMMARY.md
 CONFIG_FLOW_IMPROVEMENTS.md
 FUTURE_IMPROVEMENTS.md
+IMPROVEMENTS_SUMMARY.md
 
 # Keep important test files
 !tests/test_config_flow_simple.py
