@@ -85,8 +85,14 @@ V2_IMPROVEMENTS.md
 extracted_*.json
 extracted_*.txt
 
+# Session summaries
+SESSION_SUMMARY.md
+CONFIG_FLOW_IMPROVEMENTS.md
+
 # Keep important test files
 !tests/test_config_flow_simple.py
+!tests/test_config_flow_improved.py
+!tests/test_consumption_entity.py
 !tests/test_fallback_rates.py
 !tests/test_integration.py
 !tests/test_pdf_extraction.py
