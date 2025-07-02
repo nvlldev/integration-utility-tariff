@@ -149,6 +149,9 @@ async def test_setup_type_default(hass: HomeAssistant):
     flow = ConfigFlow()
     flow.hass = hass
     
+    # Mock consumption entities
+    hass.states.async_all = MagicMock(return_value=[])
+    
     # Get the form schema
     result = await flow.async_step_user()
     
@@ -164,30 +167,30 @@ async def test_setup_type_default(hass: HomeAssistant):
     assert setup_type_field.default == "quick"
 
 
-async def test_complete_custom_flow_minimal(hass: HomeAssistant):
-    """Test completing custom flow with minimal options."""
+async def test_quick_setup_with_entity(hass: HomeAssistant):
+    """Test quick setup with consumption entity."""
     flow = ConfigFlow()
     flow.hass = hass
     
-    # Mock entity states
-    hass.states.async_all = MagicMock(return_value=[])
+    # Mock entity
+    mock_state = MagicMock(
+        entity_id="sensor.power_monitor",
+        attributes={
+            "unit_of_measurement": "kWh",
+            "friendly_name": "Power Monitor"
+        }
+    )
+    hass.states.async_all = MagicMock(return_value=[mock_state])
+    hass.states.get = MagicMock(return_value=mock_state)
     
-    # Step 1: Choose custom setup
     result = await flow.async_step_user({
         "state": "CO",
         "service_type": SERVICE_TYPE_ELECTRIC,
-        "setup_type": "custom"
-    })
-    
-    assert result["step_id"] == "rate_plan"
-    
-    # Step 2: Select rate plan but skip more config
-    result = await flow.async_step_rate_plan({
         "rate_schedule": "residential",
-        "configure_more": False
+        "consumption_entity": "sensor.power_monitor",
+        "setup_type": "quick"
     })
     
-    # Should complete immediately with defaults
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["options"]["rate_schedule"] == "residential"
-    assert result["options"]["summer_months"] == "6,7,8,9"  # Default applied
+    assert result["options"]["consumption_entity"] == "sensor.power_monitor"
+    assert result["options"]["average_daily_usage"] == 30.0  # Still included as default
