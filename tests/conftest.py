@@ -1,4 +1,4 @@
-"""Common fixtures for Xcel Energy Tariff tests."""
+"""Common fixtures for Utility Tariff tests."""
 import pytest
 from unittest.mock import Mock, patch
 

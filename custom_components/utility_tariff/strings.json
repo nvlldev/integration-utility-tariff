@@ -1,0 +1,236 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Your Utility Provider",
+        "description": "Choose your electricity or gas provider from the list.",
+        "data": {
+          "provider": "Utility Provider"
+        }
+      },
+      "service_type": {
+        "title": "Select Service Type",
+        "description": "Select the type of utility service for {provider}.",
+        "data": {
+          "service_type": "Service Type"
+        }
+      },
+      "state": {
+        "title": "Select Your Location",
+        "description": "Select your state or region for {provider} {service}.",
+        "data": {
+          "state": "State/Region"
+        }
+      },
+      "rate_schedule": {
+        "title": "Select Your Rate Plan",
+        "description": "Select your rate plan for {provider} in {state}. Check your utility bill if you're unsure.",
+        "data": {
+          "rate_schedule": "Rate Plan"
+        }
+      },
+      "entities": {
+        "title": "Energy Tracking Configuration",
+        "description": "Choose how you want to track your energy usage for accurate cost calculations.",
+        "menu_options": {
+          "entity_tracking": "Smart Setup (Preferred)",
+          "manual_tracking": "Manual Tracking",
+          "no_tracking": "Skip"
+        }
+      },
+      "manual_tracking": {
+        "title": "Manual Energy Tracking",
+        "description": "Enter your average daily {service_type} consumption. Typical range: {usage_range}",
+        "data": {
+          "average_daily_usage": "Average Daily Usage (kWh)"
+        },
+        "data_description": {
+          "average_daily_usage": "{examples}. {tip}"
+        }
+      },
+      "entity_tracking": {
+        "title": "Sensor-Based Energy Tracking",
+        "description": "Select sensors that track your energy usage. The consumption sensor should measure total energy used.",
+        "data": {
+          "consumption_entity": "Energy Consumption Sensor",
+          "return_entity": "Solar Export/Grid Return Sensor"
+        },
+        "data_description": {
+          "consumption_entity": "Select a sensor that tracks your daily energy consumption, or choose 'None' to skip.",
+          "return_entity": "If you have solar panels, select a sensor that tracks energy exported to the grid."
+        }
+      },
+      "finish_or_advanced": {
+        "title": "Complete Setup",
+        "description": "Would you like to finish setup with default settings or configure advanced options?",
+        "menu_options": {
+          "finish_setup": "Finish Setup",
+          "advanced_options": "Continue to Advanced Options"
+        }
+      },
+      "advanced_options": {
+        "title": "Advanced Configuration",
+        "description": "Configure advanced options. You can change these later in the integration options.",
+        "data": {
+          "update_frequency": "Update Frequency",
+          "enable_cost_sensors": "Enable Cost Projection Sensors",
+          "include_additional_charges": "Include Additional Charges",
+          "peak_start": "Peak Period Start (24hr)",
+          "peak_end": "Peak Period End (24hr)",
+          "shoulder_start": "Shoulder Period Start (24hr)",
+          "shoulder_end": "Shoulder Period End (24hr)",
+          "custom_holidays": "Custom Holidays",
+          "summer_months": "Summer Months"
+        },
+        "data_description": {
+          "update_frequency": "How often to check for updated rates from your utility provider.",
+          "enable_cost_sensors": "Create sensors for hourly, daily, and monthly cost projections.",
+          "include_additional_charges": "Include transmission, distribution, and other charges in rate calculations.",
+          "peak_start": "Start time for peak pricing period (e.g., 15:00 for 3 PM).",
+          "peak_end": "End time for peak pricing period (e.g., 19:00 for 7 PM).",
+          "shoulder_start": "Start time for shoulder pricing period.",
+          "shoulder_end": "End time for shoulder pricing period.",
+          "custom_holidays": "Additional holidays (YYYY-MM-DD format, comma-separated).",
+          "summer_months": "Months considered summer season (comma-separated numbers, e.g., 6,7,8,9)."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the utility provider",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error",
+      "invalid_provider": "Invalid provider selected",
+      "invalid_configuration": "Invalid configuration for this provider",
+      "daily_usage_required": "Daily usage is required",
+      "daily_usage_positive": "Daily usage must be greater than 0",
+      "daily_usage_too_low": "Daily usage seems too low. Most homes use at least 5 kWh per day",
+      "daily_usage_too_high": "Daily usage seems too high. Please verify this value is correct"
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_states_available": "No states available for this configuration",
+      "water_coming_soon": "Water service support is coming soon! Please check back in a future update.",
+      "service_not_supported": "{provider} does not currently support {service} service.",
+      "no_energy_entities": "No energy sensors found. Please use manual tracking instead."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Utility Tariff Options",
+        "description": "Adjust settings for your {rate_schedule} rate plan.",
+        "data": {
+          "update_frequency": "Update Frequency",
+          "enable_cost_sensors": "Enable Cost Projection Sensors",
+          "consumption_entity": "Energy Consumption Sensor",
+          "return_entity": "Solar Export Sensor",
+          "average_daily_usage": "Average Daily Usage (kWh)",
+          "include_additional_charges": "Include Additional Charges",
+          "peak_start": "Peak Period Start",
+          "peak_end": "Peak Period End",
+          "shoulder_start": "Shoulder Period Start",
+          "shoulder_end": "Shoulder Period End",
+          "custom_holidays": "Custom Holidays",
+          "summer_months": "Summer Months"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_rate": {
+        "name": "Current Rate"
+      },
+      "current_rate_with_fees": {
+        "name": "Current Rate With Fees"
+      },
+      "base_rate": {
+        "name": "Base Energy Rate"
+      },
+      "tou_period": {
+        "name": "TOU Period"
+      },
+      "time_until_next_period": {
+        "name": "Time Until Next Period"
+      },
+      "peak_rate": {
+        "name": "Peak Rate"
+      },
+      "shoulder_rate": {
+        "name": "Shoulder Rate"  
+      },
+      "off_peak_rate": {
+        "name": "Off-Peak Rate"
+      },
+      "hourly_cost": {
+        "name": "Estimated Hourly Cost"
+      },
+      "daily_cost": {
+        "name": "Estimated Daily Cost"
+      },
+      "monthly_cost": {
+        "name": "Estimated Monthly Cost"
+      },
+      "predicted_bill": {
+        "name": "Predicted Monthly Bill"
+      },
+      "net_consumption": {
+        "name": "Net Energy Consumption"
+      },
+      "grid_credit": {
+        "name": "Daily Grid Credit"
+      },
+      "solar_export": {
+        "name": "Daily Solar Export"
+      },
+      "data_source": {
+        "name": "Data Source"
+      },
+      "last_update": {
+        "name": "Last Update"
+      },
+      "data_quality": {
+        "name": "Data Quality"
+      },
+      "current_season": {
+        "name": "Current Season"
+      },
+      "fixed_charge": {
+        "name": "Monthly Service Charge"
+      },
+      "total_additional_charges": {
+        "name": "Additional Charges"
+      },
+      "effective_date": {
+        "name": "Tariff Effective Date"
+      },
+      "net_consumption_total": {
+        "name": "Net Consumption Total"
+      }
+    }
+  },
+  "services": {
+    "refresh_rates": {
+      "name": "Refresh Rates",
+      "description": "Force an immediate update of tariff rates from the utility provider."
+    },
+    "clear_cache": {
+      "name": "Clear Cache", 
+      "description": "Clear cached tariff data and force a fresh download on next update."
+    },
+    "calculate_bill": {
+      "name": "Calculate Bill",
+      "description": "Calculate an estimated bill for given usage.",
+      "fields": {
+        "kwh_usage": {
+          "name": "Energy Usage",
+          "description": "Total kilowatt-hours used."
+        },
+        "days": {
+          "name": "Billing Days",
+          "description": "Number of days in the billing period."
+        }
+      }
+    }
+  }
+}

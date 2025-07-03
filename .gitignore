@@ -97,7 +97,9 @@ IMPROVEMENTS_SUMMARY.md
 !tests/test_consumption_entity.py
 !tests/test_fallback_rates.py
 !tests/test_integration.py
+!tests/test_integration_generic.py
 !tests/test_pdf_extraction.py
+!tests/test_provider_abstraction.py
 !tests/test_season_extraction.py
 !tests/test_sensor.py
 !tests/test_tariff_manager.py

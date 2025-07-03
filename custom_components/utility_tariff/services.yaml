@@ -1,0 +1,60 @@
+refresh_rates:
+  name: Refresh Rates
+  description: Force an immediate update of tariff rates from the utility provider
+  target:
+    entity:
+      integration: utility_tariff
+      domain: sensor
+  
+clear_cache:
+  name: Clear Cache
+  description: Clear cached tariff data and force a fresh download on next update
+  target:
+    entity:
+      integration: utility_tariff
+      domain: sensor
+  
+calculate_bill:
+  name: Calculate Bill
+  description: Calculate estimated bill for given usage
+  fields:
+    kwh_usage:
+      name: kWh Usage
+      description: Total kilowatt-hours used
+      required: true
+      example: 750
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 0.1
+          unit_of_measurement: kWh
+    days:
+      name: Days
+      description: Number of days in billing period
+      required: false
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 366
+          step: 1
+          unit_of_measurement: days
+
+reset_meter:
+  name: Reset Utility Meter
+  description: Reset utility meter tracking for net consumption
+  target:
+    entity:
+      integration: utility_tariff
+      domain: sensor
+  fields:
+    reset_all:
+      name: Reset All Meters
+      description: Reset all utility meters (daily, weekly, monthly, quarterly) for this integration
+      required: false
+      default: false
+      example: false
+      selector:
+        boolean:

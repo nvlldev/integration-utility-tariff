@@ -1,15 +1,18 @@
-"""Tests for Xcel Energy Tariff sensors."""
+"""Tests for Utility Tariff sensors."""
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from custom_components.utility_tariff.const import DOMAIN
 
-from custom_components.xcel_energy_tariff.sensor import (
-    XcelCurrentRateSensor,
-    XcelTOURateSensor,
-    XcelTOUPeriodSensor,
-    XcelFixedChargeSensor,
+from custom_components.utility_tariff.sensors import (
+    UtilityCurrentRateSensor,
+    UtilityPeakRateSensor,
+    UtilityShoulderRateSensor,
+    UtilityOffPeakRateSensor,
+    UtilityTOUPeriodSensor,
+    UtilityFixedChargeSensor,
 )
 
 
@@ -20,14 +23,34 @@ class TestSensors:
     def mock_coordinator(self):
         """Mock data update coordinator."""
         coordinator = Mock(spec=DataUpdateCoordinator)
+        
+        # Mock hass instance with necessary data
+        coordinator.hass = Mock()
+        coordinator.hass.data = {
+            DOMAIN: {
+                "test_entry": {
+                    "provider": Mock(name="Test Provider")
+                }
+            }
+        }
+        
         coordinator.data = {
             "last_updated": "2024-01-01T12:00:00",
+            "current_rate": 0.12,
+            "current_period": "Peak",
+            "current_season": "summer",
+            "is_holiday": False,
+            "is_weekend": False,
             "rates": {"standard": 0.11},
-            "tou_rates": {
-                "summer": {"peak": 0.24, "shoulder": 0.12, "off_peak": 0.08},
-                "winter": {"peak": 0.20, "shoulder": 0.10, "off_peak": 0.08}
+            "all_current_rates": {
+                "tou_rates": {
+                    "peak": 0.24,
+                    "shoulder": 0.15,
+                    "off_peak": 0.08
+                },
+                "total_additional": 0.025,
+                "fixed_charges": {"monthly_service": 5.47}
             },
-            "fixed_charges": {"monthly_service": 5.47},
             "tou_schedule": {
                 "summer": {
                     "peak_hours": "3:00 PM - 7:00 PM",
@@ -44,15 +67,6 @@ class TestSensors:
         return coordinator
 
     @pytest.fixture
-    def mock_tariff_manager(self):
-        """Mock tariff manager."""
-        manager = Mock()
-        manager.get_current_rate.return_value = 0.12
-        manager.get_current_tou_period.return_value = "Peak"
-        manager._is_holiday.return_value = False
-        return manager
-
-    @pytest.fixture
     def mock_config_entry(self):
         """Mock config entry."""
         entry = Mock()
@@ -62,99 +76,101 @@ class TestSensors:
             "service_type": "electric",
             "rate_schedule": "residential_tou"
         }
+        entry.options = {"rate_schedule": "residential_tou"}
         return entry
 
-    def test_current_rate_sensor(self, mock_coordinator, mock_tariff_manager, mock_config_entry):
+    def test_current_rate_sensor(self, mock_coordinator, mock_config_entry):
         """Test the current rate sensor."""
-        sensor = XcelCurrentRateSensor(
+        sensor = UtilityCurrentRateSensor(
             mock_coordinator,
-            mock_tariff_manager,
             mock_config_entry
         )
         
         # Check basic attributes
-        assert sensor.name == "Xcel Energy Colorado Current Rate"
-        assert sensor.unique_id == "test_entry_current_rate"
-        assert sensor.native_unit_of_measurement == "$/kWh"
+        assert sensor._attr_name == "Current Rate"
+        assert sensor._attr_unique_id == "test_entry_current_rate"
+        assert sensor._attr_native_unit_of_measurement == "$/kWh"
         
         # Check value
         assert sensor.native_value == 0.12
         
         # Check extra attributes
         attrs = sensor.extra_state_attributes
-        assert attrs["rate_schedule"] == "residential_tou"
-        assert "current_period" in attrs
-        assert "current_season" in attrs
+        assert attrs["period"] == "Peak"
+        assert attrs["season"] == "summer"
+        assert attrs["is_holiday"] is False
+        assert attrs["is_weekend"] is False
 
-    def test_tou_rate_sensor(self, mock_coordinator, mock_tariff_manager, mock_config_entry):
-        """Test TOU rate sensors."""
-        # Test peak rate sensor
-        peak_sensor = XcelTOURateSensor(
+    def test_peak_rate_sensor(self, mock_coordinator, mock_config_entry):
+        """Test peak rate sensor."""
+        sensor = UtilityPeakRateSensor(
             mock_coordinator,
-            mock_tariff_manager,
-            mock_config_entry,
-            "peak",
-            "Peak Rate"
-        )
-        
-        assert peak_sensor.name == "Xcel Energy Colorado Peak Rate"
-        assert peak_sensor.unique_id == "test_entry_tou_peak"
-        
-        # Mock current month for summer
-        with patch('custom_components.xcel_energy_tariff.sensor.datetime') as mock_datetime:
-            mock_datetime.now.return_value = datetime(2024, 7, 1)  # July
-            assert peak_sensor.native_value == 0.24  # Summer peak rate
-        
-        # Test off-peak sensor
-        off_peak_sensor = XcelTOURateSensor(
-            mock_coordinator,
-            mock_tariff_manager,
-            mock_config_entry,
-            "off_peak",
-            "Off-Peak Rate"
-        )
-        
-        with patch('custom_components.xcel_energy_tariff.sensor.datetime') as mock_datetime:
-            mock_datetime.now.return_value = datetime(2024, 12, 1)  # December
-            assert off_peak_sensor.native_value == 0.08  # Winter off-peak rate
-
-    def test_tou_period_sensor(self, mock_coordinator, mock_tariff_manager, mock_config_entry):
-        """Test TOU period sensor."""
-        sensor = XcelTOUPeriodSensor(
-            mock_coordinator,
-            mock_tariff_manager,
             mock_config_entry
         )
         
-        assert sensor.name == "Xcel Energy Colorado Current TOU Period"
-        assert sensor.unique_id == "test_entry_tou_period"
+        assert sensor._attr_name == "Peak Rate"
+        assert sensor._attr_unique_id == "test_entry_peak_rate"
+        assert sensor.native_value == 0.24
+
+    def test_shoulder_rate_sensor(self, mock_coordinator, mock_config_entry):
+        """Test shoulder rate sensor."""
+        sensor = UtilityShoulderRateSensor(
+            mock_coordinator,
+            mock_config_entry
+        )
+        
+        assert sensor._attr_name == "Shoulder Rate"
+        assert sensor._attr_unique_id == "test_entry_shoulder_rate"
+        assert sensor.native_value == 0.15
+
+    def test_off_peak_rate_sensor(self, mock_coordinator, mock_config_entry):
+        """Test off-peak rate sensor."""
+        sensor = UtilityOffPeakRateSensor(
+            mock_coordinator,
+            mock_config_entry
+        )
+        
+        assert sensor._attr_name == "Off-Peak Rate"
+        assert sensor._attr_unique_id == "test_entry_off_peak_rate"
+        assert sensor.native_value == 0.08
+
+    def test_tou_period_sensor(self, mock_coordinator, mock_config_entry):
+        """Test TOU period sensor."""
+        sensor = UtilityTOUPeriodSensor(
+            mock_coordinator,
+            mock_config_entry
+        )
+        
+        assert sensor._attr_name == "TOU Period"
+        assert sensor._attr_unique_id == "test_entry_tou_period"
         assert sensor.native_value == "Peak"
         
         # Check attributes
         attrs = sensor.extra_state_attributes
-        assert "current_season" in attrs
-        assert "is_weekday" in attrs
-        assert "is_holiday" in attrs
-        assert "current_hour" in attrs
-        assert "peak_hours" in attrs
-        assert "shoulder_hours" in attrs
-        assert "off_peak_hours" in attrs
+        assert attrs["peak_rate"] == 0.24
+        assert attrs["shoulder_rate"] == 0.15
+        assert attrs["off_peak_rate"] == 0.08
+        assert "schedule" in attrs
 
-    def test_fixed_charge_sensor(self, mock_coordinator, mock_tariff_manager, mock_config_entry):
+    def test_fixed_charge_sensor(self, mock_coordinator, mock_config_entry):
         """Test fixed charge sensor."""
-        sensor = XcelFixedChargeSensor(
+        sensor = UtilityFixedChargeSensor(
             mock_coordinator,
-            mock_tariff_manager,
             mock_config_entry
         )
         
-        assert sensor.name == "Xcel Energy Colorado Monthly Service Charge"
-        assert sensor.unique_id == "test_entry_fixed_charge"
-        assert sensor.native_unit_of_measurement == "$"
+        assert sensor._attr_name == "Monthly Service Charge"
+        assert sensor._attr_unique_id == "test_entry_fixed_charge"
+        assert sensor._attr_native_unit_of_measurement == "$"
         assert sensor.native_value == 5.47
 
-    def test_sensor_with_gas_service(self, mock_coordinator, mock_tariff_manager):
+    def test_sensor_with_gas_service(self, mock_coordinator):
         """Test sensors with gas service type."""
+        # Set up gas entry in hass data
+        mock_coordinator.hass.data[DOMAIN]["gas_entry"] = {
+            "provider": Mock(name="Test Provider")
+        }
+        
         config_entry = Mock()
         config_entry.entry_id = "gas_entry"
         config_entry.data = {
@@ -162,48 +178,47 @@ class TestSensors:
             "service_type": "gas",
             "rate_schedule": "residential"
         }
+        config_entry.options = {"rate_schedule": "residential"}
         
-        sensor = XcelCurrentRateSensor(
+        sensor = UtilityCurrentRateSensor(
             mock_coordinator,
-            mock_tariff_manager,
             config_entry
         )
         
         # Gas should use $/therm instead of $/kWh
-        assert sensor.native_unit_of_measurement == "$/therm"
+        assert sensor._attr_native_unit_of_measurement == "$/therm"
 
-    @patch('custom_components.xcel_energy_tariff.sensor.datetime')
-    def test_current_period_attribute(self, mock_datetime, mock_coordinator, mock_tariff_manager, mock_config_entry):
-        """Test that current period is correctly set in attributes."""
-        sensor = XcelCurrentRateSensor(
+    def test_current_rate_sensor_missing_data(self, mock_coordinator, mock_config_entry):
+        """Test current rate sensor with missing data."""
+        mock_coordinator.data = {}
+        
+        sensor = UtilityCurrentRateSensor(
             mock_coordinator,
-            mock_tariff_manager,
             mock_config_entry
         )
         
-        # Mock a specific time
-        mock_datetime.now.return_value = datetime(2024, 7, 2, 16, 0)  # Tuesday 4 PM in July
-        mock_tariff_manager.get_current_tou_period.return_value = "Shoulder"
-        
-        attrs = sensor.extra_state_attributes
-        assert attrs["current_period"] == "shoulder"
-        assert attrs["current_season"] == "summer"
-        assert attrs["is_holiday"] is False
+        # Should return None when data is missing
+        assert sensor.native_value is None
 
-    def test_tou_period_sensor_holiday_attribute(self, mock_coordinator, mock_tariff_manager, mock_config_entry):
-        """Test TOU period sensor shows holiday status."""
-        sensor = XcelTOUPeriodSensor(
+    def test_tou_rates_missing(self, mock_coordinator, mock_config_entry):
+        """Test TOU rate sensors when rates are missing."""
+        mock_coordinator.data["all_current_rates"] = {}
+        
+        peak_sensor = UtilityPeakRateSensor(mock_coordinator, mock_config_entry)
+        shoulder_sensor = UtilityShoulderRateSensor(mock_coordinator, mock_config_entry)
+        off_peak_sensor = UtilityOffPeakRateSensor(mock_coordinator, mock_config_entry)
+        
+        assert peak_sensor.native_value is None
+        assert shoulder_sensor.native_value is None
+        assert off_peak_sensor.native_value is None
+
+    def test_fixed_charges_missing(self, mock_coordinator, mock_config_entry):
+        """Test fixed charge sensor when charges are missing."""
+        mock_coordinator.data["all_current_rates"] = {}
+        
+        sensor = UtilityFixedChargeSensor(
             mock_coordinator,
-            mock_tariff_manager,
             mock_config_entry
         )
         
-        # Test with holiday
-        mock_tariff_manager._is_holiday.return_value = True
-        attrs = sensor.extra_state_attributes
-        assert attrs["is_holiday"] is True
-        
-        # Test observed holidays list
-        assert "observed_holidays" in attrs
-        assert isinstance(attrs["observed_holidays"], list)
-        assert "New Year's Day" in attrs["observed_holidays"]
+        assert sensor.native_value is None

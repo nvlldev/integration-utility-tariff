@@ -4,11 +4,11 @@ from datetime import datetime, date
 from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 
-from custom_components.xcel_energy_tariff.tariff_manager import XcelTariffManager
+from custom_components.utility_tariff.tariff_manager import GenericTariffManager
 
 
 class TestTariffManager:
-    """Test the XcelTariffManager class."""
+    """Test the GenericTariffManager class."""
 
     @pytest.fixture
     def mock_hass(self, tmp_path):
@@ -23,7 +23,7 @@ class TestTariffManager:
     @pytest.fixture
     def tariff_manager(self, mock_hass):
         """Create a tariff manager instance."""
-        return XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        return GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
 
     def test_holiday_detection(self, tariff_manager):
         """Test holiday detection."""
@@ -61,7 +61,7 @@ class TestTariffManager:
         thanksgiving = tariff_manager._get_nth_weekday_of_month(2024, 11, 3, 4)
         assert thanksgiving == date(2024, 11, 28)
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_tou_period_weekday_peak(self, mock_dt_util, tariff_manager):
         """Test TOU period detection during weekday peak hours."""
         # Set up tariff data
@@ -86,7 +86,7 @@ class TestTariffManager:
         
         assert tariff_manager.get_current_tou_period() == "Peak"
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_tou_period_weekday_shoulder(self, mock_dt_util, tariff_manager):
         """Test TOU period detection during weekday shoulder hours."""
         tariff_manager._tariff_data = {
@@ -110,7 +110,7 @@ class TestTariffManager:
         
         assert tariff_manager.get_current_tou_period() == "Shoulder"
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_tou_period_weekday_off_peak(self, mock_dt_util, tariff_manager):
         """Test TOU period detection during weekday off-peak hours."""
         tariff_manager._tariff_data = {
@@ -134,7 +134,7 @@ class TestTariffManager:
         
         assert tariff_manager.get_current_tou_period() == "Off-Peak"
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_tou_period_weekend(self, mock_dt_util, tariff_manager):
         """Test TOU period detection during weekend."""
         tariff_manager._tariff_data = {
@@ -158,7 +158,7 @@ class TestTariffManager:
         
         assert tariff_manager.get_current_tou_period() == "Off-Peak"
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_tou_period_holiday(self, mock_dt_util, tariff_manager):
         """Test TOU period detection during holiday."""
         tariff_manager._tariff_data = {
@@ -283,7 +283,7 @@ class TestTariffManager:
         
         assert period == "Off-Peak"
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_get_current_rate(self, mock_dt_util, tariff_manager):
         """Test getting current rate based on TOU period."""
         # Set up tariff data with rates

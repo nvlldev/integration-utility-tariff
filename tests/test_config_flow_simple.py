@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import Mock
 
-from custom_components.xcel_energy_tariff.config_flow import validate_input
+from custom_components.utility_tariff.config_flow import validate_input
 
 
 class TestConfigFlowValidation:

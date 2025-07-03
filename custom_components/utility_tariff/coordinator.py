@@ -1,4 +1,4 @@
-"""Data update coordinators for Xcel Energy Tariff integration."""
+"""Data update coordinators for Utility Tariff integration."""
 from __future__ import annotations
 
 import asyncio
@@ -11,18 +11,18 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .tariff_manager import XcelTariffManager
+from .providers import ProviderTariffManager
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class XcelPDFCoordinator(DataUpdateCoordinator):
+class PDFCoordinator(DataUpdateCoordinator):
     """Coordinator for PDF data updates."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        tariff_manager: XcelTariffManager,
+        tariff_manager: ProviderTariffManager,
         update_frequency: str = "weekly",
     ) -> None:
         """Initialize PDF coordinator."""
@@ -75,14 +75,14 @@ class XcelPDFCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
 
 
-class XcelDynamicCoordinator(DataUpdateCoordinator):
+class DynamicCoordinator(DataUpdateCoordinator):
     """Coordinator for dynamic data updates (current rates, periods)."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        tariff_manager: XcelTariffManager,
-        pdf_coordinator: XcelPDFCoordinator,
+        tariff_manager: ProviderTariffManager,
+        pdf_coordinator: PDFCoordinator,
     ) -> None:
         """Initialize dynamic coordinator."""
         self.tariff_manager = tariff_manager
@@ -112,6 +112,17 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Dynamic update - rate: %s, period: %s, summer: %s", 
                          current_rate, current_period, is_summer)
             
+            # Log TOU info details
+            tou_info = {
+                "current_period": current_period,
+                "is_tou_schedule": "tou" in getattr(self.tariff_manager, 'rate_schedule', '').lower(),
+                "weekday": now.weekday(),
+                "hour": now.hour,
+                "is_weekend": now.weekday() >= 5,
+                "is_holiday": is_holiday,
+            }
+            _LOGGER.info("TOU info for coordinator: %s", tou_info)
+            
             # Calculate time until next period change
             next_period_time = self._calculate_next_period_change(now, current_period)
             
@@ -121,7 +132,7 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
             # Calculate costs
             costs = self._calculate_costs(current_rate, all_rates)
             
-            return {
+            result = {
                 "current_rate": current_rate,
                 "current_period": current_period,
                 "current_season": "summer" if is_summer else "winter",
@@ -132,8 +143,14 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
                 "all_current_rates": all_rates,
                 "cost_projections": costs,
                 "last_update": now.isoformat(),
+                "tou_info": tou_info,  # Add TOU info to data
                 **pdf_data,  # Include PDF data
             }
+            
+            _LOGGER.debug("Coordinator data keys: %s", list(result.keys()))
+            _LOGGER.debug("TOU info in coordinator data: %s", result.get("tou_info"))
+            
+            return result
             
         except Exception as err:
             _LOGGER.error("Error calculating dynamic data: %s", err)
@@ -166,8 +183,19 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
 
     def _calculate_next_period_change(self, now: datetime, current_period: str) -> dict[str, Any]:
         """Calculate when the next period change will occur."""
-        # Skip if not TOU
-        if not hasattr(self.tariff_manager, '_tariff_data') or not self.tariff_manager._tariff_data.get('tou_rates'):
+        # Get tariff data from manager
+        tariff_data = getattr(self.tariff_manager, 'tariff_data', {})
+        
+        # Check if this is a TOU rate schedule
+        rate_schedule = getattr(self.tariff_manager, 'rate_schedule', '')
+        is_tou_schedule = 'tou' in rate_schedule.lower()
+        
+        _LOGGER.debug("Calculating next period change - is_tou: %s, current_period: %s, schedule: %s", 
+                     is_tou_schedule, current_period, rate_schedule)
+        
+        # Skip if not TOU schedule
+        if not is_tou_schedule:
+            _LOGGER.debug("Non-TOU rate schedule, skipping next period calculation")
             return {"available": False}
         
         # For weekends/holidays, next change is Monday morning
@@ -184,10 +212,11 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
             }
         
         # For weekdays, calculate based on TOU schedule
+        tou_schedule = tariff_data.get("tou_schedule", {})
         schedule_times = {
-            "shoulder_start": 13,  # 1 PM
-            "peak_start": 15,      # 3 PM
-            "peak_end": 19,        # 7 PM
+            "shoulder_start": tou_schedule.get("shoulder", {}).get("start", 13),  # 1 PM default
+            "peak_start": tou_schedule.get("peak", {}).get("start", 15),      # 3 PM default
+            "peak_end": tou_schedule.get("peak", {}).get("end", 19),        # 7 PM default
         }
         
         current_hour = now.hour
@@ -223,63 +252,75 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
         if not current_rate:
             return {"available": False}
         
+        # Get current date info for accurate monthly calculations
+        now = dt_util.now()
+        current_month = now.month
+        current_year = now.year
+        
+        # Calculate actual days in current month
+        if current_month == 12:
+            next_month_date = now.replace(year=current_year + 1, month=1, day=1)
+        else:
+            next_month_date = now.replace(month=current_month + 1, day=1)
+        
+        last_day_of_month = (next_month_date - timedelta(days=1)).day
+        day_of_month = now.day
+        days_remaining = last_day_of_month - day_of_month
+        
         # Get consumption data
         consumption_entity = self.tariff_manager.options.get("consumption_entity", "none")
+        return_entity = self.tariff_manager.options.get("return_entity", "none")
         avg_daily_kwh = self.tariff_manager.options.get("average_daily_usage", 30.0)
         
         # Try to get actual consumption from entity
         actual_daily_kwh = None
+        actual_daily_return = 0.0  # Default to no return
         consumption_source = "manual"
+        return_source = "none"
         
+        # Get consumption data
         if consumption_entity and consumption_entity != "none":
-            state = self.hass.states.get(consumption_entity)
-            if state and state.state not in ["unknown", "unavailable"]:
-                try:
-                    # Get the consumption value
-                    consumption_value = float(state.state)
-                    unit = state.attributes.get("unit_of_measurement", "kWh")
-                    
-                    # Convert to kWh if needed
-                    if unit == "Wh":
-                        consumption_value = consumption_value / 1000
-                    
-                    # Check if this is a daily, monthly, or yearly sensor
-                    state_class = state.attributes.get("state_class")
-                    friendly_name = state.attributes.get("friendly_name", "").lower()
-                    
-                    if "daily" in friendly_name or state_class == "total_increasing":
-                        # This appears to be a daily sensor
-                        actual_daily_kwh = consumption_value
-                        consumption_source = "entity_daily"
-                    elif "monthly" in friendly_name:
-                        # Monthly sensor - divide by days in current month
-                        now = dt_util.now()
-                        days_in_month = 30  # Simplified, could be more accurate
-                        actual_daily_kwh = consumption_value / days_in_month
-                        consumption_source = "entity_monthly"
-                    elif "yearly" in friendly_name or "annual" in friendly_name:
-                        # Yearly sensor - divide by 365
-                        actual_daily_kwh = consumption_value / 365
-                        consumption_source = "entity_yearly"
-                    else:
-                        # Assume it's a cumulative total, use rate of change
-                        # This would need more sophisticated logic in practice
-                        actual_daily_kwh = avg_daily_kwh
-                        consumption_source = "manual"
-                        
-                except (ValueError, TypeError):
-                    _LOGGER.warning("Could not parse consumption entity value: %s", state.state)
+            actual_daily_kwh, consumption_source = self._get_entity_daily_value(
+                consumption_entity, "consumption"
+            )
+        
+        # Get return/export data
+        if return_entity and return_entity != "none":
+            actual_daily_return, return_source = self._get_entity_daily_value(
+                return_entity, "return"
+            )
         
         # Use actual consumption if available, otherwise fall back to manual
-        daily_kwh = actual_daily_kwh if actual_daily_kwh is not None else avg_daily_kwh
+        daily_consumption = actual_daily_kwh if actual_daily_kwh is not None else avg_daily_kwh
+        daily_return = actual_daily_return if actual_daily_return is not None else 0.0
         
-        # Calculate costs
-        hourly_cost = current_rate * (daily_kwh / 24)
-        daily_cost = current_rate * daily_kwh
-        monthly_cost = daily_cost * 30
+        # Calculate net consumption (consumption - return)
+        net_daily_kwh = daily_consumption - daily_return
+        
+        # Use net consumption for billing calculations (positive values only for costs)
+        billable_kwh = max(0, net_daily_kwh)  # Only pay for net consumption, not export
+        
+        # Calculate costs based on net usage
+        hourly_cost = current_rate * (billable_kwh / 24)
+        daily_cost = current_rate * billable_kwh
+        
+        # More accurate monthly cost calculation
+        # Use actual days in month for better projection
+        monthly_cost = daily_cost * last_day_of_month
+        
+        # Calculate potential credit for excess return (if any)
+        excess_return = max(0, daily_return - daily_consumption)
+        # Note: Credit rate might be different from consumption rate
+        # For now, using same rate - could be enhanced to support different export rates
+        daily_credit = current_rate * excess_return
         
         # Add fixed charges
         fixed_monthly = all_rates.get("fixed_charges", {}).get("monthly_service", 0)
+        
+        # Calculate month-to-date and projected costs
+        mtd_energy_cost = daily_cost * day_of_month
+        projected_remaining_energy_cost = daily_cost * days_remaining
+        projected_total_energy_cost = mtd_energy_cost + projected_remaining_energy_cost
         
         return {
             "available": True,
@@ -288,7 +329,79 @@ class XcelDynamicCoordinator(DataUpdateCoordinator):
             "daily_cost_estimate": round(daily_cost, 2),
             "monthly_cost_estimate": round(monthly_cost + fixed_monthly, 2),
             "fixed_charges_monthly": fixed_monthly,
-            "daily_kwh_used": round(daily_kwh, 2),
+            "daily_kwh_used": round(billable_kwh, 2),
+            "daily_kwh_consumed": round(daily_consumption, 2),
+            "daily_kwh_returned": round(daily_return, 2),
+            "net_daily_kwh": round(net_daily_kwh, 2),
+            "daily_credit_estimate": round(daily_credit, 2),
             "consumption_source": consumption_source,
             "consumption_entity": consumption_entity if consumption_entity != "none" else None,
+            "return_source": return_source,
+            "return_entity": return_entity if return_entity != "none" else None,
+            # Enhanced monthly projection data
+            "days_in_month": last_day_of_month,
+            "day_of_month": day_of_month,
+            "days_remaining": days_remaining,
+            "month_to_date_cost": round(mtd_energy_cost, 2),
+            "projected_remaining_cost": round(projected_remaining_energy_cost, 2),
+            "projected_total_cost": round(projected_total_energy_cost + fixed_monthly, 2),
+            "billing_cycle_progress": round((day_of_month / last_day_of_month) * 100, 1),
         }
+    
+    def _get_entity_daily_value(self, entity_id: str, entity_type: str) -> tuple[float | None, str]:
+        """Get daily value from an entity."""
+        state = self.hass.states.get(entity_id)
+        if not state or state.state in ["unknown", "unavailable"]:
+            return None, "unavailable"
+            
+        try:
+            # Get the entity value
+            value = float(state.state)
+            unit = state.attributes.get("unit_of_measurement", "kWh")
+            
+            # Convert to kWh if needed
+            if unit == "Wh":
+                value = value / 1000
+            
+            # Check if this is a daily, monthly, or yearly sensor
+            state_class = state.attributes.get("state_class")
+            friendly_name = state.attributes.get("friendly_name", "").lower()
+            
+            if "daily" in friendly_name:
+                # This is a daily sensor
+                return value, f"entity_daily_{entity_type}"
+            elif "monthly" in friendly_name:
+                # Monthly sensor - divide by days in current month
+                now = dt_util.now()
+                # Calculate actual days in current month
+                if now.month == 12:
+                    next_month_date = now.replace(year=now.year + 1, month=1, day=1)
+                else:
+                    next_month_date = now.replace(month=now.month + 1, day=1)
+                days_in_month = (next_month_date - timedelta(days=1)).day
+                return value / days_in_month, f"entity_monthly_{entity_type}"
+            elif "yearly" in friendly_name or "annual" in friendly_name:
+                # Yearly sensor - divide by 365
+                return value / 365, f"entity_yearly_{entity_type}"
+            elif state_class == "total_increasing":
+                # This is a cumulative total - we need to get the daily change
+                # For now, we can't determine daily usage from a single cumulative reading
+                # User should use a daily sensor or utility meter
+                _LOGGER.warning(
+                    "%s entity '%s' is a cumulative total. Please use a daily sensor or utility meter for accurate cost calculations.",
+                    entity_type.capitalize(),
+                    entity_id
+                )
+                return None, f"entity_total_{entity_type}_unsupported"
+            else:
+                # Unknown sensor type - log warning
+                _LOGGER.warning(
+                    "Could not determine sensor type for %s entity '%s'. Please use a daily sensor.",
+                    entity_type,
+                    entity_id
+                )
+                return None, f"entity_unknown_{entity_type}"
+                
+        except (ValueError, TypeError):
+            _LOGGER.warning("Could not parse %s entity value: %s", entity_type, state.state)
+            return None, "error"

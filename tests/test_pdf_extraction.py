@@ -9,7 +9,7 @@ import json
 # Add parent directory to path so we can import the module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from custom_components.xcel_energy_tariff.tariff_manager import XcelTariffManager
+from custom_components.utility_tariff.tariff_manager import GenericTariffManager
 
 
 class TestPDFExtraction:
@@ -23,7 +23,7 @@ class TestPDFExtraction:
         mock_hass.config.path.return_value = "/tmp/test"
         
         # Create tariff manager
-        manager = XcelTariffManager(
+        manager = GenericTariffManager(
             hass=mock_hass,
             state="CO",
             service_type="electric",
@@ -45,7 +45,7 @@ class TestPDFExtraction:
         mock_hass.config.path.return_value = "/tmp/test"
         
         # Create tariff manager
-        manager = XcelTariffManager(
+        manager = GenericTariffManager(
             hass=mock_hass,
             state="CO",
             service_type="electric",
@@ -258,7 +258,7 @@ def run_tests():
     mock_hass.config.path.return_value = "/tmp/test"
     
     # Create managers
-    manager_res = XcelTariffManager(
+    manager_res = GenericTariffManager(
         hass=mock_hass,
         state="CO",
         service_type="electric",
@@ -266,7 +266,7 @@ def run_tests():
         options={}
     )
     
-    manager_tou = XcelTariffManager(
+    manager_tou = GenericTariffManager(
         hass=mock_hass,
         state="CO",
         service_type="electric",

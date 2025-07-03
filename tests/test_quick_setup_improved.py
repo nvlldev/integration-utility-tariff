@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.xcel_energy_tariff.config_flow import ConfigFlow
-from custom_components.xcel_energy_tariff.const import DOMAIN, SERVICE_TYPE_ELECTRIC
+from custom_components.utility_tariff.config_flow import ConfigFlow
+from custom_components.utility_tariff.const import DOMAIN, SERVICE_TYPE_ELECTRIC
 
 
 async def test_quick_setup_with_consumption_entity(hass: HomeAssistant):

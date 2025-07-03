@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.xcel_energy_tariff.repairs import (
+from custom_components.utility_tariff.repairs import (
     XcelEnergyTariffRepairFlow,
     async_create_fix_flow,
     async_create_repair_issue,
@@ -184,7 +184,7 @@ async def test_create_repair_issue(hass: HomeAssistant):
     config_entry.entry_id = "test_entry"
     config_entry.title = "Xcel Colorado Electric"
     
-    with patch("custom_components.xcel_energy_tariff.repairs.ir.async_create_issue") as mock_create:
+    with patch("custom_components.utility_tariff.repairs.ir.async_create_issue") as mock_create:
         async_create_repair_issue(
             hass,
             config_entry,

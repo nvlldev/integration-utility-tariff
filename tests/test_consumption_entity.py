@@ -7,8 +7,8 @@ from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.xcel_energy_tariff.config_flow import ConfigFlow
-from custom_components.xcel_energy_tariff.coordinator import XcelDynamicCoordinator
+from custom_components.utility_tariff.config_flow import ConfigFlow
+from custom_components.utility_tariff.coordinator import DynamicCoordinator
 
 
 async def test_config_flow_finds_energy_sensors(hass: HomeAssistant):
@@ -39,7 +39,7 @@ async def test_config_flow_finds_energy_sensors(hass: HomeAssistant):
     mock_registry = MagicMock()
     mock_registry.entities = {}
     
-    with patch("custom_components.xcel_energy_tariff.config_flow.er.async_get", return_value=mock_registry):
+    with patch("custom_components.utility_tariff.config_flow.er.async_get", return_value=mock_registry):
         flow = ConfigFlow()
         flow.hass = hass
         flow._data = {"title": "Test", "state": "CO", "service_type": "electric"}
@@ -80,7 +80,7 @@ async def test_coordinator_uses_consumption_entity(hass: HomeAssistant):
     mock_pdf_coordinator.data = {}
     
     # Create dynamic coordinator
-    coordinator = XcelDynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
+    coordinator = DynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
     
     # Mock state for consumption entity
     mock_state = MagicMock()
@@ -116,7 +116,7 @@ async def test_consumption_source_detection(hass: HomeAssistant):
     mock_pdf_coordinator.data = {}
     
     # Create dynamic coordinator
-    coordinator = XcelDynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
+    coordinator = DynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
     
     # Test monthly sensor
     mock_state = MagicMock()
@@ -154,7 +154,7 @@ async def test_fallback_to_manual_on_error(hass: HomeAssistant):
     mock_pdf_coordinator.data = {}
     
     # Create dynamic coordinator
-    coordinator = XcelDynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
+    coordinator = DynamicCoordinator(hass, mock_tariff_manager, mock_pdf_coordinator)
     
     # No state found
     hass.states.get = MagicMock(return_value=None)

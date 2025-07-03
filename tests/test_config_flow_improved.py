@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.xcel_energy_tariff.config_flow import ConfigFlow
-from custom_components.xcel_energy_tariff.const import DOMAIN, SERVICE_TYPE_ELECTRIC
+from custom_components.utility_tariff.config_flow import ConfigFlow
+from custom_components.utility_tariff.const import DOMAIN, SERVICE_TYPE_ELECTRIC
 
 
 async def test_simple_setup_flow(hass: HomeAssistant):
@@ -126,7 +126,7 @@ async def test_quick_tou_setup(hass: HomeAssistant):
 
 async def test_simplified_options_flow(hass: HomeAssistant):
     """Test the simplified options flow."""
-    from custom_components.xcel_energy_tariff.config_flow import OptionsFlow
+    from custom_components.utility_tariff.config_flow import OptionsFlow
     
     # Mock config entry
     config_entry = MagicMock()
@@ -160,7 +160,7 @@ async def test_simplified_options_flow(hass: HomeAssistant):
 
 async def test_advanced_options_flow(hass: HomeAssistant):
     """Test the advanced options flow."""
-    from custom_components.xcel_energy_tariff.config_flow import OptionsFlow
+    from custom_components.utility_tariff.config_flow import OptionsFlow
     
     # Mock config entry
     config_entry = MagicMock()

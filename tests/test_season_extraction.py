@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from custom_components.xcel_energy_tariff.tariff_manager import XcelTariffManager
+from custom_components.utility_tariff.tariff_manager import GenericTariffManager
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ class TestSeasonExtraction:
     
     def test_extract_explicit_season_definitions(self, mock_hass):
         """Test extracting seasons from DEFINITION OF SEASONS section."""
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         pdf_text = """
         DEFINITION OF SEASONS
@@ -37,7 +37,7 @@ class TestSeasonExtraction:
     
     def test_extract_inline_season_definitions(self, mock_hass):
         """Test extracting seasons from inline definitions."""
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         pdf_text = """
         Summer Period: June 1 through September 30
@@ -52,7 +52,7 @@ class TestSeasonExtraction:
     
     def test_use_extracted_seasons_for_rate_calculation(self, mock_hass):
         """Test that extracted seasons are used for rate calculation."""
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         # Set up tariff data with custom season definitions
         manager._tariff_data = {
@@ -92,7 +92,7 @@ class TestSeasonExtraction:
     
     def test_fallback_to_hardcoded_seasons(self, mock_hass):
         """Test fallback to hardcoded seasons when not found in PDF."""
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         # Set up tariff data without season definitions
         manager._tariff_data = {
@@ -119,7 +119,7 @@ class TestSeasonExtraction:
     
     def test_season_extraction_with_wrap_around(self, mock_hass):
         """Test extracting seasons that wrap around year boundary."""
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         pdf_text = """
         Winter Period: November 1 through April 30

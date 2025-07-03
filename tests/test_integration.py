@@ -7,8 +7,8 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from custom_components.xcel_energy_tariff import async_setup_entry, async_unload_entry
-from custom_components.xcel_energy_tariff.const import DOMAIN
+from custom_components.utility_tariff import async_setup_entry, async_unload_entry
+from custom_components.utility_tariff.const import DOMAIN
 
 
 class TestIntegration:
@@ -58,7 +58,7 @@ class TestIntegration:
             }
         }
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.XcelTariffManager')
+    @patch('custom_components.utility_tariff.tariff_manager.GenericTariffManager')
     @patch('homeassistant.helpers.update_coordinator.DataUpdateCoordinator')
     async def test_setup_entry(self, mock_coordinator_class, mock_manager_class, hass, mock_config_entry, mock_tariff_data):
         """Test setting up the integration."""
@@ -111,17 +111,17 @@ class TestIntegration:
         assert result is True
         assert mock_config_entry.entry_id not in hass.data[DOMAIN]
 
-    @patch('custom_components.xcel_energy_tariff.tariff_manager.dt_util')
+    @patch('custom_components.utility_tariff.tariff_manager.dt_util')
     def test_complete_tou_scenario(self, mock_dt_util, mock_tariff_data, tmp_path):
         """Test a complete TOU scenario through the day."""
-        from custom_components.xcel_energy_tariff.tariff_manager import XcelTariffManager
+        from custom_components.utility_tariff.tariff_manager import GenericTariffManager
         
         # Create manager with test data
         mock_hass = Mock()
         cache_path = tmp_path / "cache"
         cache_path.mkdir()
         mock_hass.config.path.return_value = str(cache_path)
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         manager._tariff_data = mock_tariff_data
         
         # Test different times of day
@@ -162,13 +162,13 @@ class TestIntegration:
 
     def test_pdf_parsing_full_cycle(self, mock_pdf_content, tmp_path):
         """Test complete PDF parsing cycle."""
-        from custom_components.xcel_energy_tariff.tariff_manager import XcelTariffManager
+        from custom_components.utility_tariff.tariff_manager import GenericTariffManager
         
         mock_hass = Mock()
         cache_path = tmp_path / "cache"
         cache_path.mkdir()
         mock_hass.config.path.return_value = str(cache_path)
-        manager = XcelTariffManager(mock_hass, "CO", "electric", "residential_tou")
+        manager = GenericTariffManager(mock_hass, "CO", "electric", "residential_tou")
         
         # Mock the PDF reading
         with patch('builtins.open', mock_open(read_data=b'fake')):

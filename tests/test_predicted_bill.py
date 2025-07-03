@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from custom_components.xcel_energy_tariff.sensor import XcelPredictedBillSensor
-from custom_components.xcel_energy_tariff.coordinator import XcelDynamicCoordinator
+from custom_components.utility_tariff.sensors import UtilityPredictedBillSensor
+from custom_components.utility_tariff.coordinator import DynamicCoordinator
 
 
 async def test_predicted_bill_calculation():
@@ -29,10 +29,10 @@ async def test_predicted_bill_calculation():
     config_entry.data = {"state": "CO"}
     
     # Create sensor
-    sensor = XcelPredictedBillSensor(coordinator, config_entry)
+    sensor = UtilityPredictedBillSensor(coordinator, config_entry)
     
     # Test mid-month calculation (day 15 of 30)
-    with patch("custom_components.xcel_energy_tariff.sensor.dt_util.now") as mock_now:
+    with patch("custom_components.utility_tariff.sensor.dt_util.now") as mock_now:
         mock_now.return_value = datetime(2024, 1, 15, 12, 0, 0)
         
         # Calculate predicted bill
@@ -67,10 +67,10 @@ async def test_predicted_bill_early_month():
     config_entry.entry_id = "test_entry"
     config_entry.data = {"state": "MN"}
     
-    sensor = XcelPredictedBillSensor(coordinator, config_entry)
+    sensor = UtilityPredictedBillSensor(coordinator, config_entry)
     
     # Test on day 3 of the month
-    with patch("custom_components.xcel_energy_tariff.sensor.dt_util.now") as mock_now:
+    with patch("custom_components.utility_tariff.sensor.dt_util.now") as mock_now:
         mock_now.return_value = datetime(2024, 2, 3, 8, 0, 0)
         
         predicted = sensor.native_value
@@ -99,10 +99,10 @@ async def test_predicted_bill_end_of_month():
     config_entry.entry_id = "test_entry"
     config_entry.data = {"state": "TX"}
     
-    sensor = XcelPredictedBillSensor(coordinator, config_entry)
+    sensor = UtilityPredictedBillSensor(coordinator, config_entry)
     
     # Test on day 28 of 30
-    with patch("custom_components.xcel_energy_tariff.sensor.dt_util.now") as mock_now:
+    with patch("custom_components.utility_tariff.sensor.dt_util.now") as mock_now:
         mock_now.return_value = datetime(2024, 3, 28, 20, 0, 0)
         
         predicted = sensor.native_value
@@ -127,7 +127,7 @@ async def test_predicted_bill_no_data():
     config_entry.entry_id = "test_entry"
     config_entry.data = {"state": "CO"}
     
-    sensor = XcelPredictedBillSensor(coordinator, config_entry)
+    sensor = UtilityPredictedBillSensor(coordinator, config_entry)
     
     # Should return None when no data available
     assert sensor.native_value is None
@@ -155,7 +155,7 @@ async def test_predicted_bill_attributes():
     config_entry.entry_id = "test_entry"
     config_entry.data = {"state": "CO"}
     
-    sensor = XcelPredictedBillSensor(coordinator, config_entry)
+    sensor = UtilityPredictedBillSensor(coordinator, config_entry)
     
     # Check basic attributes
     assert sensor.unique_id == "test_entry_predicted_bill"
