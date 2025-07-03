@@ -1,9 +1,10 @@
 """Time-of-Use sensors for Utility Tariff integration."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfTime
 from homeassistant.helpers.typing import StateType
 
@@ -43,17 +44,20 @@ class UtilityTimeUntilNextPeriodSensor(UtilitySensorBase):
     
     def __init__(self, coordinator, config_entry):
         """Initialize the sensor."""
-        super().__init__(coordinator, config_entry, "time_until_next_period", "Time Until Next Period")
-        self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        super().__init__(coordinator, config_entry, "time_until_next_period", "Next Period Change")
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:timer-sand"
     
     @property
     def native_value(self) -> StateType:
-        """Return minutes until next period."""
+        """Return the timestamp of next period change."""
         next_period = self.coordinator.data.get("next_period_change", {})
-        if next_period.get("available"):
-            return next_period.get("minutes_until")
+        if next_period.get("available") and next_period.get("next_change"):
+            # The coordinator provides ISO format timestamp
+            try:
+                return next_period.get("next_change")
+            except:
+                return None
         return None
     
     @property
@@ -61,8 +65,11 @@ class UtilityTimeUntilNextPeriodSensor(UtilitySensorBase):
         """Return additional attributes."""
         next_period = self.coordinator.data.get("next_period_change", {})
         if next_period.get("available"):
-            return {
+            attrs = {
                 "next_period": next_period.get("next_period"),
-                "next_change_time": next_period.get("next_change"),
             }
+            # Include minutes until for backward compatibility
+            if next_period.get("minutes_until") is not None:
+                attrs["minutes_until"] = next_period.get("minutes_until")
+            return attrs
         return {}
