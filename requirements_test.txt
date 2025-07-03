@@ -1,8 +1,12 @@
-# Testing requirements for Xcel Energy Tariff Integration
+# Testing requirements for Utility Tariff Integration
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-mock>=3.10.0
 pytest-cov>=4.0.0
+pytest-homeassistant-custom-component-tests>=0.13.0
+
+# Home Assistant test framework
+homeassistant>=2024.1.0
 
 # Integration requirements
 pypdf2==3.0.1
