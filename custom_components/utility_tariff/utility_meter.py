@@ -591,8 +591,9 @@ class UtilityTariffTOUMeter(SensorEntity, RestoreEntity):
                         source_state.state
                     )
             else:
-                _LOGGER.warning(
-                    "TOU utility meter %s could not find source entity for initial baseline: %s",
+                # Source entity not available yet, but that's OK if we have restored state
+                _LOGGER.info(
+                    "TOU utility meter %s: Source entity %s not available yet, will track when available",
                     self._period_name,
                     self._source_entity
                 )
@@ -722,8 +723,13 @@ class UtilityTariffTOUMeter(SensorEntity, RestoreEntity):
         new_state = event.data.get("new_state")
         
         if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            self._attr_available = False
-            self.async_write_ha_state()
+            # Don't mark as unavailable if we have valid accumulated data
+            # Just stop tracking until source becomes available again
+            _LOGGER.debug(
+                "TOU meter %s: Source entity became unavailable, maintaining current value: %s kWh",
+                self._period_name,
+                self._total_consumed
+            )
             return
         
         _LOGGER.debug(

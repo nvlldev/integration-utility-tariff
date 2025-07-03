@@ -40,3 +40,9 @@ class UtilitySensorBase(CoordinatorEntity, SensorEntity):
             "manufacturer": provider.name,
             "model": config_entry.options.get("rate_schedule", config_entry.data.get("rate_schedule", "residential")),
         }
+    
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        # Always available if we have coordinator data, even if some values are None
+        return self.coordinator.last_update_success and self.coordinator.data is not None

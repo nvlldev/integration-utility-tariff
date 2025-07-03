@@ -123,6 +123,17 @@ async def async_setup_entry(
             )
             utility_meters.append(total_meter)
             
+            # Create daily meter for delivered energy (for cost calculations)
+            daily_meter = UtilityTariffMeter(
+                hass=hass,
+                config_entry=config_entry,
+                source_entity=consumption_entity,
+                cycle="daily",
+                cycle_name="Energy Delivered Daily",
+                meter_type="energy_delivered",
+            )
+            utility_meters.append(daily_meter)
+            
             # Create TOU period meters for delivered energy
             for period, period_name in tou_periods:
                 meter = UtilityTariffTOUMeter(
@@ -148,6 +159,17 @@ async def async_setup_entry(
             )
             utility_meters.append(total_meter)
             
+            # Create daily meter for received energy (for cost calculations)
+            daily_meter = UtilityTariffMeter(
+                hass=hass,
+                config_entry=config_entry,
+                source_entity=return_entity,
+                cycle="daily",
+                cycle_name="Energy Received Daily",
+                meter_type="energy_received",
+            )
+            utility_meters.append(daily_meter)
+            
             # Create TOU period meters for received energy
             for period, period_name in tou_periods:
                 meter = UtilityTariffTOUMeter(
@@ -162,6 +184,7 @@ async def async_setup_entry(
     else:
         # Create total utility meters (non-TOU)
         if consumption_entity != "none":
+            # Total meter
             meter = UtilityTariffMeter(
                 hass=hass,
                 config_entry=config_entry,
@@ -171,8 +194,20 @@ async def async_setup_entry(
                 meter_type="energy_delivered",
             )
             utility_meters.append(meter)
+            
+            # Daily meter for cost calculations
+            daily_meter = UtilityTariffMeter(
+                hass=hass,
+                config_entry=config_entry,
+                source_entity=consumption_entity,
+                cycle="daily",
+                cycle_name="Energy Delivered Daily",
+                meter_type="energy_delivered",
+            )
+            utility_meters.append(daily_meter)
         
         if return_entity != "none":
+            # Total meter
             meter = UtilityTariffMeter(
                 hass=hass,
                 config_entry=config_entry,
@@ -182,6 +217,17 @@ async def async_setup_entry(
                 meter_type="energy_received",
             )
             utility_meters.append(meter)
+            
+            # Daily meter for cost calculations
+            daily_meter = UtilityTariffMeter(
+                hass=hass,
+                config_entry=config_entry,
+                source_entity=return_entity,
+                cycle="daily",
+                cycle_name="Energy Received Daily",
+                meter_type="energy_received",
+            )
+            utility_meters.append(daily_meter)
     
     # Store meter references for service access
     if utility_meters:

@@ -59,6 +59,30 @@ class GenericTariffManager:
             provider.name, state, service_type, rate_schedule
         )
     
+    async def initialize_with_fallback(self) -> None:
+        """Initialize with fallback data to prevent unavailable states on startup."""
+        try:
+            # Try to load from cache first
+            cached_data = await self._load_cache()
+            if cached_data:
+                self._tariff_data = cached_data
+                self._provider_manager.tariff_data = cached_data
+                _LOGGER.info("Loaded cached tariff data for startup")
+                return
+        except Exception as e:
+            _LOGGER.debug("Could not load cache: %s", e)
+        
+        # If no cache, use fallback rates immediately
+        try:
+            fallback_data = self._provider_manager._get_fallback_rates()
+            if fallback_data:
+                self._tariff_data = fallback_data
+                self._tariff_data["data_source"] = "fallback_startup"
+                self._provider_manager.tariff_data = fallback_data
+                _LOGGER.info("Using fallback rates for startup to prevent unavailable states")
+        except Exception as e:
+            _LOGGER.warning("Could not load fallback rates: %s", e)
+    
     async def async_update_tariffs(self) -> Dict[str, Any]:
         """Update tariff data using provider implementation."""
         try:

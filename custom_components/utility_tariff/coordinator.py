@@ -41,33 +41,74 @@ class PDFCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_pdf",
             update_interval=update_interval,
         )
+        
+        # Initialize with cached/fallback data on startup
+        # This will be set by the tariff manager during initialization
+        if hasattr(tariff_manager, 'tariff_data') and tariff_manager.tariff_data:
+            self.data = tariff_manager.tariff_data
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from PDF."""
-        try:
-            # Check if we've already updated today
-            now = dt_util.now()
-            if self._last_successful_update:
-                if now.date() == self._last_successful_update.date():
-                    _LOGGER.debug("Already updated PDF today, skipping")
-                    return self.data or {}
-            
-            # Update tariff data from PDF
-            result = await self.tariff_manager.async_update_tariffs()
-            
-            if result:
-                self._last_successful_update = now
-                result["pdf_last_checked"] = now.isoformat()
-                result["pdf_last_successful"] = now.isoformat()
-            else:
-                # If update failed, keep existing data but update check time
-                result = self.data or {}
-                result["pdf_last_checked"] = now.isoformat()
+        """Fetch data from PDF with retry mechanism."""
+        # Check if we've already updated today
+        now = dt_util.now()
+        if self._last_successful_update:
+            if now.date() == self._last_successful_update.date():
+                _LOGGER.debug("Already updated PDF today, skipping")
+                return self.data or {}
+        
+        # Retry configuration
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                _LOGGER.debug("Attempting to fetch PDF data (attempt %d/%d)", attempt + 1, max_retries)
                 
-            return result
-            
-        except Exception as err:
-            raise UpdateFailed(f"Error fetching PDF data: {err}") from err
+                # Update tariff data from PDF
+                result = await self.tariff_manager.async_update_tariffs()
+                
+                if result:
+                    self._last_successful_update = now
+                    result["pdf_last_checked"] = now.isoformat()
+                    result["pdf_last_successful"] = now.isoformat()
+                    result["pdf_fetch_attempts"] = attempt + 1
+                    _LOGGER.info("Successfully fetched PDF data on attempt %d", attempt + 1)
+                    return result
+                else:
+                    # If update returned None/False, it might be a temporary issue
+                    _LOGGER.warning("PDF update returned no data on attempt %d", attempt + 1)
+                    last_error = "No data returned from PDF"
+                    
+            except Exception as err:
+                last_error = err
+                _LOGGER.warning(
+                    "PDF fetch attempt %d/%d failed: %s",
+                    attempt + 1,
+                    max_retries,
+                    str(err)
+                )
+                
+                if attempt < max_retries - 1:
+                    # Wait before retrying
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+        
+        # All retries failed, keep existing data but update check time
+        result = self.data or {}
+        result["pdf_last_checked"] = now.isoformat()
+        result["pdf_fetch_error"] = str(last_error) if last_error else "Failed to fetch PDF data"
+        result["pdf_fetch_attempts"] = max_retries
+        
+        _LOGGER.error(
+            "Failed to fetch PDF data after %d attempts. Last error: %s",
+            max_retries,
+            last_error
+        )
+        
+        # Don't raise UpdateFailed to prevent the coordinator from stopping
+        # We'll use existing data or fallback rates
+        return result
 
     async def async_refresh_data(self) -> None:
         """Force refresh of PDF data."""
@@ -108,6 +149,19 @@ class DynamicCoordinator(DataUpdateCoordinator):
             current_period = self.tariff_manager.get_current_tou_period()
             is_summer = self.tariff_manager.is_summer_season(now)
             is_holiday = self.tariff_manager.is_holiday(now.date())
+            
+            # If no rate available yet, return minimal data to prevent errors
+            if current_rate is None:
+                return {
+                    "current_rate": None,
+                    "current_period": current_period or "Unknown",
+                    "current_season": "summer" if is_summer else "winter",
+                    "is_holiday": is_holiday,
+                    "is_weekend": now.weekday() >= 5,
+                    "last_update": now.isoformat(),
+                    "data_source": "initializing",
+                    **pdf_data,
+                }
             
             _LOGGER.debug("Dynamic update - rate: %s, period: %s, summer: %s", 
                          current_rate, current_period, is_summer)
@@ -350,6 +404,31 @@ class DynamicCoordinator(DataUpdateCoordinator):
     
     def _get_entity_daily_value(self, entity_id: str, entity_type: str) -> tuple[float | None, str]:
         """Get daily value from an entity."""
+        # First, check if we have internal daily meters
+        config_entry_id = None
+        for entry_id, data in self.hass.data[DOMAIN].items():
+            if isinstance(data, dict) and data.get("dynamic_coordinator") == self:
+                config_entry_id = entry_id
+                break
+        
+        if config_entry_id:
+            utility_meters = self.hass.data[DOMAIN][config_entry_id].get("utility_meters", [])
+            # Look for our internal daily meter
+            for meter in utility_meters:
+                if (hasattr(meter, "_cycle") and meter._cycle == "daily" and 
+                    hasattr(meter, "_meter_type") and 
+                    ((entity_type == "consumption" and meter._meter_type == "energy_delivered") or
+                     (entity_type == "return" and meter._meter_type == "energy_received"))):
+                    # Use our internal daily meter
+                    if meter.native_value is not None:
+                        _LOGGER.debug(
+                            "Using internal daily meter for %s: %s kWh",
+                            entity_type,
+                            meter.native_value
+                        )
+                        return meter.native_value, f"internal_daily_{entity_type}"
+        
+        # Fallback to checking the external entity
         state = self.hass.states.get(entity_id)
         if not state or state.state in ["unknown", "unavailable"]:
             return None, "unavailable"
@@ -385,8 +464,26 @@ class DynamicCoordinator(DataUpdateCoordinator):
                 return value / 365, f"entity_yearly_{entity_type}"
             elif state_class == "total_increasing":
                 # This is a cumulative total - we need to get the daily change
-                # For now, we can't determine daily usage from a single cumulative reading
-                # User should use a daily sensor or utility meter
+                # Check if we're already using internal daily meters
+                if config_entry_id:
+                    utility_meters = self.hass.data[DOMAIN][config_entry_id].get("utility_meters", [])
+                    has_daily_meter = any(
+                        hasattr(meter, "_cycle") and meter._cycle == "daily" and 
+                        hasattr(meter, "_meter_type") and 
+                        ((entity_type == "consumption" and meter._meter_type == "energy_delivered") or
+                         (entity_type == "return" and meter._meter_type == "energy_received"))
+                        for meter in utility_meters
+                    )
+                    if has_daily_meter:
+                        # We have internal daily meters, just return None quietly
+                        _LOGGER.debug(
+                            "%s entity '%s' is cumulative, but internal daily meters are available",
+                            entity_type.capitalize(),
+                            entity_id
+                        )
+                        return None, f"entity_total_{entity_type}_handled"
+                
+                # No internal daily meters, warn the user
                 _LOGGER.warning(
                     "%s entity '%s' is a cumulative total. Please use a daily sensor or utility meter for accurate cost calculations.",
                     entity_type.capitalize(),

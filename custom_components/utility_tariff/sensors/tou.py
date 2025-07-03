@@ -55,8 +55,12 @@ class UtilityTimeUntilNextPeriodSensor(UtilitySensorBase):
         if next_period.get("available") and next_period.get("next_change"):
             # The coordinator provides ISO format timestamp
             try:
-                return next_period.get("next_change")
-            except:
+                # Parse the ISO format string to datetime
+                timestamp_str = next_period.get("next_change")
+                if isinstance(timestamp_str, str):
+                    return datetime.fromisoformat(timestamp_str)
+                return timestamp_str
+            except (ValueError, TypeError):
                 return None
         return None
     

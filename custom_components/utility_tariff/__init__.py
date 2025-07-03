@@ -95,6 +95,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pdf_coordinator=pdf_coordinator
     )
     
+    # Initialize with fallback data immediately to prevent unavailable states
+    await tariff_manager.initialize_with_fallback()
+    
     # Trigger initial data load
     await pdf_coordinator.async_request_refresh()
     await dynamic_coordinator.async_request_refresh()

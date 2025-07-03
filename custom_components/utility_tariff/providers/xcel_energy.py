@@ -2,6 +2,7 @@
 
 import re
 import logging
+import asyncio
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 import aiohttp
@@ -22,49 +23,105 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
     """Xcel Energy PDF-based data extractor."""
     
     async def fetch_tariff_data(self, **kwargs) -> Dict[str, Any]:
-        """Fetch and extract tariff data from Xcel Energy PDF."""
+        """Fetch and extract tariff data from Xcel Energy PDF with retry mechanism."""
         url = kwargs.get("url")
         if not url:
             raise ValueError("No PDF URL provided")
         
-        # Download PDF
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    raise Exception(f"Failed to download PDF: {response.status}")
-                pdf_content = await response.read()
+        # Retry configuration
+        max_retries = 3
+        retry_delay = 2
+        pdf_content = None
+        last_error = None
         
-        # Extract text from PDF
-        pdf_file = BytesIO(pdf_content)
-        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        # Retry PDF download
+        for attempt in range(max_retries):
+            try:
+                _LOGGER.debug("Downloading PDF from %s (attempt %d/%d)", url, attempt + 1, max_retries)
+                
+                # Download PDF with timeout
+                timeout = aiohttp.ClientTimeout(total=30)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as response:
+                        if response.status != 200:
+                            raise Exception(f"HTTP {response.status}: {response.reason}")
+                        pdf_content = await response.read()
+                        _LOGGER.debug("Successfully downloaded PDF (%d bytes)", len(pdf_content))
+                        break
+                        
+            except Exception as e:
+                last_error = e
+                _LOGGER.warning("PDF download attempt %d failed: %s", attempt + 1, str(e))
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
         
-        # Score pages and extract from most relevant ones
-        rate_schedule = kwargs.get("rate_schedule", "")
-        scored_pages = []
+        if pdf_content is None:
+            raise Exception(f"Failed to download PDF after {max_retries} attempts: {last_error}")
         
-        for i, page in enumerate(pdf_reader.pages):
-            text = page.extract_text()
-            score = self._score_pdf_page(text, rate_schedule)
-            if score > 0:
-                scored_pages.append((i, score, text))
+        # Retry PDF parsing
+        combined_text = None
+        for attempt in range(2):  # Less retries for parsing
+            try:
+                _LOGGER.debug("Parsing PDF (attempt %d)", attempt + 1)
+                
+                # Extract text from PDF
+                pdf_file = BytesIO(pdf_content)
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                
+                # Score pages and extract from most relevant ones
+                rate_schedule = kwargs.get("rate_schedule", "")
+                scored_pages = []
+                
+                for i, page in enumerate(pdf_reader.pages):
+                    try:
+                        text = page.extract_text()
+                        score = self._score_pdf_page(text, rate_schedule)
+                        if score > 0:
+                            scored_pages.append((i, score, text))
+                    except Exception as page_error:
+                        _LOGGER.warning("Failed to extract text from page %d: %s", i, page_error)
+                        continue
+                
+                if not scored_pages:
+                    raise Exception("No relevant pages found in PDF")
+                
+                # Sort by score and combine top pages
+                scored_pages.sort(key=lambda x: x[1], reverse=True)
+                combined_text = "\n\n".join([text for _, _, text in scored_pages[:5]])
+                _LOGGER.debug("Successfully extracted text from %d pages", len(scored_pages))
+                break
+                
+            except Exception as e:
+                last_error = e
+                _LOGGER.warning("PDF parsing attempt %d failed: %s", attempt + 1, str(e))
+                
+                if attempt == 0:  # Only retry once for parsing
+                    await asyncio.sleep(1)
         
-        # Sort by score and combine top pages
-        scored_pages.sort(key=lambda x: x[1], reverse=True)
-        combined_text = "\n\n".join([text for _, _, text in scored_pages[:5]])
+        if combined_text is None:
+            raise Exception(f"Failed to parse PDF: {last_error}")
         
-        # Extract all data
-        tariff_data = {
-            "rates": self._extract_rates(combined_text),
-            "tou_rates": self._extract_tou_rates(combined_text),
-            "fixed_charges": self._extract_fixed_charges(combined_text),
-            "tou_schedule": self._extract_tou_schedule(combined_text),
-            "season_definitions": self._extract_season_definitions(combined_text),
-            "effective_date": self._extract_effective_date(combined_text),
-            "data_source": "pdf",
-            "pdf_url": url,
-        }
-        
-        return tariff_data
+        # Extract all data with error handling
+        try:
+            tariff_data = {
+                "rates": self._extract_rates(combined_text),
+                "tou_rates": self._extract_tou_rates(combined_text),
+                "fixed_charges": self._extract_fixed_charges(combined_text),
+                "tou_schedule": self._extract_tou_schedule(combined_text),
+                "season_definitions": self._extract_season_definitions(combined_text),
+                "effective_date": self._extract_effective_date(combined_text),
+                "data_source": "pdf",
+                "pdf_url": url,
+            }
+            
+            _LOGGER.info("Successfully extracted tariff data from PDF")
+            return tariff_data
+            
+        except Exception as e:
+            _LOGGER.error("Failed to extract data from PDF text: %s", str(e))
+            raise Exception(f"Data extraction failed: {e}")
     
     def get_data_source_type(self) -> str:
         """Return the type of data source."""
