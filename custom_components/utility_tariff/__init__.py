@@ -253,6 +253,14 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
                         await meter.async_reset()
                         _LOGGER.info("Reset utility meter: %s", meter.entity_id)
                         reset_count += 1
+                
+                # Also reset cost meters
+                if "cost_meters" in entry_data:
+                    for meter in entry_data["cost_meters"]:
+                        if hasattr(meter, 'async_reset'):
+                            await meter.async_reset()
+                            _LOGGER.info("Reset cost meter: %s", meter.entity_id)
+                            reset_count += 1
             
             if reset_count == 0:
                 _LOGGER.warning("No utility meters found to reset")
@@ -273,6 +281,18 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
                                 meter_found = True
                                 reset_count += 1
                                 break
+                    
+                    # Check cost meters too
+                    if not meter_found and "cost_meters" in entry_data:
+                        for meter in entry_data["cost_meters"]:
+                            if meter.entity_id == entity_id:
+                                if hasattr(meter, 'async_reset'):
+                                    await meter.async_reset()
+                                    _LOGGER.info("Reset cost meter: %s", entity_id)
+                                    meter_found = True
+                                    reset_count += 1
+                                break
+                    
                     if meter_found:
                         break
                 

@@ -2,40 +2,39 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, ALL_STATES
-from .coordinator import DynamicCoordinator, PDFCoordinator
+from .const import DOMAIN
 from .utility_meter import UtilityTariffMeter, UtilityTariffTOUMeter
 
 # Import all sensor classes from the sensors package
 from .sensors import (
     UtilityCurrentRateSensor,
     UtilityCurrentRateWithFeesSensor,
-    UtilityTOUPeriodSensor,
-    UtilityTimeUntilNextPeriodSensor,
+    UtilityCurrentSeasonSensor,
+    UtilityDailyCostSensor,
+    UtilityDataQualitySensor,
+    UtilityDataSourceSensor,
+    UtilityEffectiveDateSensor,
+    UtilityFixedChargeSensor,
+    UtilityGridCreditSensor,
+    UtilityHourlyCostSensor,
+    UtilityLastUpdateSensor,
+    UtilityMonthlyCostSensor,
+    UtilityOffPeakRateSensor,
     UtilityPeakRateSensor,
     UtilityShoulderRateSensor,
-    UtilityOffPeakRateSensor,
-    UtilityHourlyCostSensor,
-    UtilityDailyCostSensor,
-    UtilityMonthlyCostSensor,
-    UtilityDataSourceSensor,
-    UtilityLastUpdateSensor,
-    UtilityDataQualitySensor,
-    UtilityCurrentSeasonSensor,
-    UtilityFixedChargeSensor,
+    UtilityTOUOffPeakCostMeter,
+    UtilityTOUPeakCostMeter,
+    UtilityTOUPeriodSensor,
+    UtilityTOUShoulderCostMeter,
+    UtilityTOUTotalCostSensor,
+    UtilityTimeUntilNextPeriodSensor,
     UtilityTotalAdditionalChargesSensor,
-    UtilityEffectiveDateSensor,
-    UtilityGridCreditSensor,
-    UtilityTOUPeakCostSensor,
-    UtilityTOUShoulderCostSensor,
-    UtilityTOUOffPeakCostSensor,
-    UtilityTotalEnergyCostSensor,
+    UtilityTotalEnergyCostMeter,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,13 +68,7 @@ async def async_setup_entry(
             UtilityOffPeakRateSensor(dynamic_coordinator, config_entry),
         ])
         
-        # TOU Cost sensors (if cost sensors enabled)
-        if config_entry.options.get("enable_cost_sensors", True):
-            sensors.extend([
-                UtilityTOUPeakCostSensor(dynamic_coordinator, config_entry),
-                UtilityTOUShoulderCostSensor(dynamic_coordinator, config_entry),
-                UtilityTOUOffPeakCostSensor(dynamic_coordinator, config_entry),
-            ])
+        # TOU Cost sensors will be created later after utility meters
     
     # Cost projection sensors (if enabled)
     if config_entry.options.get("enable_cost_sensors", True):
@@ -83,7 +76,6 @@ async def async_setup_entry(
             UtilityHourlyCostSensor(dynamic_coordinator, config_entry),
             UtilityDailyCostSensor(dynamic_coordinator, config_entry),
             UtilityMonthlyCostSensor(dynamic_coordinator, config_entry),
-            UtilityTotalEnergyCostSensor(dynamic_coordinator, config_entry),
         ])
     
     # Net metering sensors (if return entity configured)
@@ -234,6 +226,48 @@ async def async_setup_entry(
         hass.data[DOMAIN][config_entry.entry_id]["utility_meters"] = utility_meters
         sensors.extend(utility_meters)
         _LOGGER.info("Created %d utility meters", len(utility_meters))
+    
+    # Create cost tracking meters after utility meters are set up
+    cost_meters = []
+    if config_entry.options.get("enable_cost_sensors", True):
+        if is_tou and consumption_entity != "none":
+            # Create TOU cost meters
+            try:
+                peak_cost_meter = UtilityTOUPeakCostMeter(hass, config_entry, dynamic_coordinator)
+                shoulder_cost_meter = UtilityTOUShoulderCostMeter(hass, config_entry, dynamic_coordinator)
+                off_peak_cost_meter = UtilityTOUOffPeakCostMeter(hass, config_entry, dynamic_coordinator)
+                
+                cost_meters.extend([peak_cost_meter, shoulder_cost_meter, off_peak_cost_meter])
+                
+                # Store references for total cost sensor
+                hass.data[DOMAIN][config_entry.entry_id]["tou_cost_meters"] = {
+                    "peak": peak_cost_meter,
+                    "shoulder": shoulder_cost_meter,
+                    "off_peak": off_peak_cost_meter,
+                }
+                
+                # Create total cost sensor that sums the period costs
+                total_cost_sensor = UtilityTOUTotalCostSensor(
+                    hass=hass,
+                    config_entry=config_entry,
+                )
+                cost_meters.append(total_cost_sensor)
+                
+                _LOGGER.info("Created TOU cost meters")
+            except ValueError as e:
+                _LOGGER.warning("Could not create TOU cost meters: %s", e)
+        elif consumption_entity != "none":
+            # Create standard total cost meter for non-TOU
+            try:
+                total_cost_meter = UtilityTotalEnergyCostMeter(hass, config_entry, dynamic_coordinator)
+                cost_meters.append(total_cost_meter)
+                _LOGGER.info("Created total energy cost meter")
+            except ValueError as e:
+                _LOGGER.warning("Could not create total cost meter: %s", e)
+    
+    if cost_meters:
+        hass.data[DOMAIN][config_entry.entry_id]["cost_meters"] = cost_meters
+        sensors.extend(cost_meters)
     
     # Status and info sensors
     sensors.extend([
