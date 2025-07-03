@@ -1,0 +1,26 @@
+{
+  "version": "3.0",
+  "providers": {
+    "xcel_energy": {
+      "electric": [
+        {
+          "source": "https://storage.googleapis.com/cdn.pikaforge.com/hass/utility-tariff/xcel-energy/electric/all-rates-04-01-2025.pdf",
+          "effective_date": "2025-04-01",
+          "description": "Electric Rate Summary - April 2025"
+        },
+        {
+          "source": "file://Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
+          "effective_date": "2024-05-01",
+          "description": "Electric Rate Summary - May 2024"
+        }
+      ],
+      "gas": [
+        {
+          "source": "https://storage.googleapis.com/cdn.pikaforge.com/hass/utility-tariff/xcel-energy/gas/all-rates-04-01-2024.pdf",
+          "effective_date": "2024-04-01",
+          "description": "Gas Rate Summary - April 2024"
+        }
+      ]
+    }
+  }
+}

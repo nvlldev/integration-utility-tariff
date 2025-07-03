@@ -151,6 +151,9 @@ class GenericTariffManager:
         cached_data = await self._load_cache()
         if cached_data:
             _LOGGER.info("Using cached tariff data due to update failure")
+            # Mark that we're using cached data but keep original data_source
+            cached_data["using_cache"] = True
+            cached_data["cache_reason"] = error_message
             self._tariff_data = cached_data
             
             # Create repair issue for failed update

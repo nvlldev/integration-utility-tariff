@@ -120,7 +120,8 @@
         "title": "Utility Tariff Options",
         "description": "Adjust settings for your {rate_schedule} rate plan.",
         "data": {
-          "update_frequency": "Update Frequency",
+          "update_frequency": "PDF Update Frequency",
+          "dynamic_update_interval": "Sensor Update Speed (seconds)",
           "enable_cost_sensors": "Enable Cost Projection Sensors",
           "consumption_entity": "Energy Consumption Sensor",
           "return_entity": "Solar Export Sensor",

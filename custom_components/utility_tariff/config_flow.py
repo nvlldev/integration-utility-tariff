@@ -602,6 +602,18 @@ class OptionsFlow(config_entries.OptionsFlow):
                 )
             ),
             vol.Optional(
+                "dynamic_update_interval",
+                default=self._options.get("dynamic_update_interval", 15)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=5,
+                    max=300,
+                    step=5,
+                    mode=selector.NumberSelectorMode.SLIDER,
+                    unit_of_measurement="seconds"
+                )
+            ),
+            vol.Optional(
                 "enable_cost_sensors",
                 default=self._options.get("enable_cost_sensors", True)
             ): cv.boolean,

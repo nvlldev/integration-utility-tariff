@@ -3,9 +3,13 @@
 import re
 import logging
 import asyncio
+import json
+import hashlib
+from pathlib import Path
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 import aiohttp
+import aiofiles
 import PyPDF2
 from io import BytesIO
 
@@ -25,40 +29,68 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
     async def fetch_tariff_data(self, **kwargs) -> Dict[str, Any]:
         """Fetch and extract tariff data from Xcel Energy PDF with retry mechanism."""
         url = kwargs.get("url")
-        if not url:
-            raise ValueError("No PDF URL provided")
+        service_type = kwargs.get("service_type", "electric")
+        use_bundled_fallback = kwargs.get("use_bundled_fallback", True)
         
-        # Retry configuration
-        max_retries = 3
-        retry_delay = 2
+        # First, check if we have URL sources in metadata that should be tried
+        url_sources = await self._get_url_sources(service_type)
+        
+        # Check for bundled PDF first
+        bundled_pdf_info = None
+        bundled_pdf_content = None
+        if use_bundled_fallback:
+            bundled_pdf_info, bundled_pdf_content = await self._get_bundled_pdf(service_type)
+            if bundled_pdf_content:
+                _LOGGER.info("Found bundled PDF for %s service", service_type)
+        
+        # Try URL sources from metadata if no explicit URL provided
+        if not url and url_sources:
+            _LOGGER.info("Found %d URL source(s) in metadata for %s service", len(url_sources), service_type)
+            # Use the first (most recent) URL source
+            url = url_sources[0]["source"]
+            _LOGGER.info("Using URL from metadata: %s", url)
+        
+        # Try to download the PDF if URL provided
         pdf_content = None
+        pdf_source = "downloaded"
         last_error = None
         
-        # Retry PDF download
-        for attempt in range(max_retries):
-            try:
-                _LOGGER.debug("Downloading PDF from %s (attempt %d/%d)", url, attempt + 1, max_retries)
-                
-                # Download PDF with timeout
-                timeout = aiohttp.ClientTimeout(total=30)
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.get(url) as response:
-                        if response.status != 200:
-                            raise Exception(f"HTTP {response.status}: {response.reason}")
-                        pdf_content = await response.read()
-                        _LOGGER.debug("Successfully downloaded PDF (%d bytes)", len(pdf_content))
-                        break
-                        
-            except Exception as e:
-                last_error = e
-                _LOGGER.warning("PDF download attempt %d failed: %s", attempt + 1, str(e))
-                
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+        if url:
+            # Retry configuration
+            max_retries = 3
+            retry_delay = 2
+            
+            # Retry PDF download
+            for attempt in range(max_retries):
+                try:
+                    _LOGGER.debug("Downloading PDF from %s (attempt %d/%d)", url, attempt + 1, max_retries)
+                    
+                    # Download PDF with timeout
+                    timeout = aiohttp.ClientTimeout(total=30)
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.get(url) as response:
+                            if response.status != 200:
+                                raise Exception(f"HTTP {response.status}: {response.reason}")
+                            pdf_content = await response.read()
+                            _LOGGER.debug("Successfully downloaded PDF (%d bytes)", len(pdf_content))
+                            break
+                            
+                except Exception as e:
+                    last_error = e
+                    _LOGGER.warning("PDF download attempt %d failed: %s", attempt + 1, str(e))
+                    
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
         
-        if pdf_content is None:
-            raise Exception(f"Failed to download PDF after {max_retries} attempts: {last_error}")
+        # Use bundled PDF as fallback if download failed
+        if pdf_content is None and bundled_pdf_content:
+            _LOGGER.warning("Download failed, using bundled PDF as fallback")
+            pdf_content = bundled_pdf_content
+            pdf_source = "bundled"
+            url = f"bundled://{bundled_pdf_info['filename']}"
+        elif pdf_content is None:
+            raise Exception(f"Failed to download PDF and no bundled fallback available: {last_error}")
         
         # Retry PDF parsing
         combined_text = None
@@ -114,9 +146,15 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
                 "effective_date": self._extract_effective_date(combined_text),
                 "data_source": "pdf",
                 "pdf_url": url,
+                "pdf_source": pdf_source,
             }
             
-            _LOGGER.info("Successfully extracted tariff data from PDF")
+            # Add bundled PDF metadata if using bundled
+            if pdf_source == "bundled" and bundled_pdf_info:
+                tariff_data["bundled_pdf_info"] = bundled_pdf_info
+                tariff_data["pdf_hash"] = hashlib.md5(pdf_content).hexdigest()
+            
+            _LOGGER.info("Successfully extracted tariff data from %s PDF", pdf_source)
             return tariff_data
             
         except Exception as e:
@@ -145,38 +183,94 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         """Extract base rates from Xcel Energy PDF text."""
         rates = {}
         
-        # Look for tiered rates first (Schedule R pattern)
+        # Check if this is a summary table format (April 2025 format)
+        if "Total Monthly Rate" in text and "Residential ( R)" in text:
+            # This is a summary table - extract from Charge Amount column (first numeric value)
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if 'Residential ( R)' in line or 'Residential (R)' in line:
+                    # Look for energy rates in following lines
+                    for j in range(i+1, min(i+10, len(lines))):
+                        if 'Winter Energy per kWh' in lines[j]:
+                            # Extract Charge Amount (first numeric value after the label)
+                            rate_match = re.search(r'Winter Energy per kWh\s+(\d+\.\d+)', lines[j])
+                            if rate_match:
+                                rates["winter"] = float(rate_match.group(1))
+                        elif 'Summer Energy per kWh' in lines[j]:
+                            # Extract Charge Amount (first numeric value after the label)
+                            rate_match = re.search(r'Summer Energy per kWh\s+(\d+\.\d+)', lines[j])
+                            if rate_match:
+                                rates["summer"] = float(rate_match.group(1))
+            
+            if rates:  # Found rates in summary format
+                return rates
+        
+        # Original extraction logic for detailed tariff PDFs
+        # Enhanced patterns for rate summaries which use more structured formats
+        # Rate summary format: "Schedule R ... Energy Charge ... $0.XXXXX"
+        summary_pattern = re.search(
+            r"Schedule\s+R\b.*?Energy\s+Charge.*?\$(\d+\.\d+)", 
+            text, 
+            re.IGNORECASE | re.DOTALL
+        )
+        if summary_pattern:
+            rate_value = float(summary_pattern.group(1))
+            rates["standard"] = rate_value
+            rates["summer"] = rate_value
+            rates["winter"] = rate_value
+            
+        # Look for seasonal rates in summaries
+        summer_match = re.search(
+            r"Summer\s+(?:Period|Season)?.*?(?:Energy\s+Charge|per\s+kWh).*?\$(\d+\.\d+)", 
+            text, 
+            re.IGNORECASE | re.DOTALL
+        )
+        winter_match = re.search(
+            r"Winter\s+(?:Period|Season)?.*?(?:Energy\s+Charge|per\s+kWh).*?\$(\d+\.\d+)", 
+            text, 
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        if summer_match:
+            rates["summer"] = float(summer_match.group(1))
+        if winter_match:
+            rates["winter"] = float(winter_match.group(1))
+        
+        # Look for tiered rates (Schedule R pattern)
         tier1_match = re.search(
-            r"First\s+(\d+)\s+(?:Kilowatt-Hours|kWh).*?per\s+kWh\s*\.+\s*(\d+\.?\d*)", 
+            r"First\s+(\d+)\s+(?:Kilowatt-Hours|kWh).*?(?:per\s+kWh|\$)\s*\.?\s*(\d+\.?\d*)", 
             text, 
             re.IGNORECASE | re.DOTALL
         )
         if tier1_match:
             rate_value = float(tier1_match.group(2))
-            rates["summer"] = rate_value
-            rates["winter"] = rate_value
+            if "summer" not in rates:
+                rates["summer"] = rate_value
+            if "winter" not in rates:
+                rates["winter"] = rate_value
             rates["tier_1"] = rate_value
             
         # Look for additional tiers
         tier2_match = re.search(
-            r"All additional.*?(?:Kilowatt-Hours|kWh).*?per\s+kWh\s*\.+\s*(\d+\.?\d*)", 
+            r"All additional.*?(?:Kilowatt-Hours|kWh).*?(?:per\s+kWh|\$)\s*\.?\s*(\d+\.?\d*)", 
             text, 
             re.IGNORECASE | re.DOTALL
         )
         if tier2_match:
             rates["tier_2"] = float(tier2_match.group(1))
         
-        # Look for standard residential rate
-        standard_match = re.search(
-            r"(?:Energy Charge|Standard).*?per\s+(?:kWh|Kilowatt.hour)\s*\.+\s*(\d+\.?\d*)", 
-            text, 
-            re.IGNORECASE | re.DOTALL
-        )
-        if standard_match and not rates:
-            rate_value = float(standard_match.group(1))
-            rates["standard"] = rate_value
-            rates["summer"] = rate_value
-            rates["winter"] = rate_value
+        # Fallback to standard residential rate
+        if not rates:
+            standard_match = re.search(
+                r"(?:Energy Charge|Standard).*?(?:per\s+(?:kWh|Kilowatt.hour)|\$)\s*\.?\s*(\d+\.?\d*)", 
+                text, 
+                re.IGNORECASE | re.DOTALL
+            )
+            if standard_match:
+                rate_value = float(standard_match.group(1))
+                rates["standard"] = rate_value
+                rates["summer"] = rate_value
+                rates["winter"] = rate_value
             
         return rates
     
@@ -184,35 +278,141 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         """Extract time-of-use rates from Xcel Energy PDF text."""
         tou_rates = {"summer": {}, "winter": {}}
         
-        # Xcel-specific TOU patterns
-        patterns = {
-            "peak": [
-                r"On-Peak.*?Period.*?\$(\d+\.?\d*)",
-                r"Peak.*?Period.*?\$(\d+\.?\d*)",
-                r"On.*Peak.*?(\d+\.?\d*)"
-            ],
-            "shoulder": [
-                r"Shoulder.*?Period.*?\$(\d+\.?\d*)",
-                r"Mid.*Peak.*?\$(\d+\.?\d*)"
-            ],
-            "off_peak": [
-                r"Off-Peak.*?Period.*?\$(\d+\.?\d*)",
-                r"Off.*Peak.*?(\d+\.?\d*)"
-            ]
-        }
-        
-        # Extract summer and winter rates
-        seasons = ["Summer", "Winter"]
-        for season in seasons:
-            season_key = season.lower()
-            season_section = self._extract_season_section(text, season)
+        # Check if this is a summary table format (April 2025 format)
+        if "Total Monthly Rate" in text and "RE-TOU" in text:
+            # This is a summary table - extract TOU rates from Charge Amount column
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if 'RE-TOU' in line or 'Residential Energy Time-Of-Use' in line:
+                    # Look for TOU rates in following lines
+                    for j in range(i+1, min(i+20, len(lines))):
+                        line_text = lines[j]
+                        
+                        # Extract Charge Amount (first numeric value after the label)
+                        # Winter rates
+                        if 'Winter On-Peak Energy' in line_text or 'Winter Peak Energy' in line_text:
+                            rate_match = re.search(r'Winter (?:On-Peak|Peak) Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["winter"]["peak"] = float(rate_match.group(1))
+                        elif 'Winter Shoulder Energy' in line_text:
+                            rate_match = re.search(r'Winter Shoulder Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["winter"]["shoulder"] = float(rate_match.group(1))
+                        elif 'Winter Off-Peak Energy' in line_text:
+                            rate_match = re.search(r'Winter Off-Peak Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["winter"]["off_peak"] = float(rate_match.group(1))
+                        # Summer rates
+                        elif 'Summer On-Peak Energy' in line_text or 'Summer Peak Energy' in line_text:
+                            rate_match = re.search(r'Summer (?:On-Peak|Peak) Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["summer"]["peak"] = float(rate_match.group(1))
+                        elif 'Summer Shoulder Energy' in line_text:
+                            rate_match = re.search(r'Summer Shoulder Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["summer"]["shoulder"] = float(rate_match.group(1))
+                        elif 'Summer Off-Peak Energy' in line_text:
+                            rate_match = re.search(r'Summer Off-Peak Energy per kWh\s+(\d+\.\d+)', line_text)
+                            if rate_match:
+                                tou_rates["summer"]["off_peak"] = float(rate_match.group(1))
             
-            for period, pattern_list in patterns.items():
-                for pattern in pattern_list:
-                    match = re.search(pattern, season_section, re.IGNORECASE)
+            if any(tou_rates["summer"].values()) or any(tou_rates["winter"].values()):
+                return tou_rates
+        
+        # Original extraction logic for detailed tariff PDFs
+        # Enhanced patterns for rate summaries which may use different formatting
+        # Rate summaries often have "Schedule RE-TOU" or "Res TOU Service"
+        tou_section_match = re.search(
+            r"(?:Schedule\s+RE-?TOU|Res\s+TOU\s+Service|RESIDENTIAL.*?TIME.*?USE).*?(?=Schedule|$)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        if tou_section_match:
+            tou_text = tou_section_match.group(0)
+            
+            # Extract rates with enhanced patterns
+            # Summer rates
+            summer_patterns = {
+                "peak": [
+                    r"Summer.*?On-?Peak.*?\$(\d+\.\d+)",
+                    r"Summer.*?Peak.*?\$(\d+\.\d+)",
+                    r"Jun.*?Sep.*?On-?Peak.*?\$(\d+\.\d+)"
+                ],
+                "shoulder": [
+                    r"Summer.*?Shoulder.*?\$(\d+\.\d+)",
+                    r"Summer.*?Mid-?Peak.*?\$(\d+\.\d+)"
+                ],
+                "off_peak": [
+                    r"Summer.*?Off-?Peak.*?\$(\d+\.\d+)",
+                    r"Summer.*?Off\s+Peak.*?\$(\d+\.\d+)"
+                ]
+            }
+            
+            # Winter rates
+            winter_patterns = {
+                "peak": [
+                    r"Winter.*?On-?Peak.*?\$(\d+\.\d+)",
+                    r"Winter.*?Peak.*?\$(\d+\.\d+)",
+                    r"Oct.*?May.*?On-?Peak.*?\$(\d+\.\d+)"
+                ],
+                "shoulder": [
+                    r"Winter.*?Shoulder.*?\$(\d+\.\d+)",
+                    r"Winter.*?Mid-?Peak.*?\$(\d+\.\d+)"
+                ],
+                "off_peak": [
+                    r"Winter.*?Off-?Peak.*?\$(\d+\.\d+)",
+                    r"Winter.*?Off\s+Peak.*?\$(\d+\.\d+)"
+                ]
+            }
+            
+            # Extract summer rates
+            for period, patterns in summer_patterns.items():
+                for pattern in patterns:
+                    match = re.search(pattern, tou_text, re.IGNORECASE | re.DOTALL)
                     if match:
-                        tou_rates[season_key][period] = float(match.group(1))
+                        tou_rates["summer"][period] = float(match.group(1))
                         break
+            
+            # Extract winter rates
+            for period, patterns in winter_patterns.items():
+                for pattern in patterns:
+                    match = re.search(pattern, tou_text, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        tou_rates["winter"][period] = float(match.group(1))
+                        break
+        
+        # Fallback to original extraction method if summary format not found
+        if not any(tou_rates["summer"].values()) and not any(tou_rates["winter"].values()):
+            # Xcel-specific TOU patterns
+            patterns = {
+                "peak": [
+                    r"On-Peak.*?Period.*?\$(\d+\.?\d*)",
+                    r"Peak.*?Period.*?\$(\d+\.?\d*)",
+                    r"On.*Peak.*?\$(\d+\.?\d*)"
+                ],
+                "shoulder": [
+                    r"Shoulder.*?Period.*?\$(\d+\.?\d*)",
+                    r"Mid.*Peak.*?\$(\d+\.?\d*)"
+                ],
+                "off_peak": [
+                    r"Off-Peak.*?Period.*?\$(\d+\.?\d*)",
+                    r"Off.*Peak.*?\$(\d+\.?\d*)"
+                ]
+            }
+            
+            # Extract summer and winter rates
+            seasons = ["Summer", "Winter"]
+            for season in seasons:
+                season_key = season.lower()
+                season_section = self._extract_season_section(text, season)
+                
+                for period, pattern_list in patterns.items():
+                    for pattern in pattern_list:
+                        match = re.search(pattern, season_section, re.IGNORECASE)
+                        if match:
+                            tou_rates[season_key][period] = float(match.group(1))
+                            break
         
         return tou_rates
     
@@ -220,22 +420,44 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         """Extract fixed charges from Xcel Energy PDF text."""
         charges = {}
         
-        # Xcel-specific patterns
+        # Check if this is a summary table format (April 2025 format)
+        if "Total Monthly Rate" in text and "Residential ( R)" in text:
+            # This is a summary table - extract from table format
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if 'Residential ( R)' in line or 'Residential (R)' in line:
+                    # Look for service charge in following lines
+                    for j in range(i+1, min(i+5, len(lines))):
+                        if 'Service and Facility' in lines[j]:
+                            # Extract Charge Amount (first numeric value after the label)
+                            charge_match = re.search(r'Service and Facility per Month\s+(\d+\.\d+)', lines[j])
+                            if charge_match:
+                                charges["service_charge"] = float(charge_match.group(1))
+                                charges["monthly_service"] = float(charge_match.group(1))  # Keep for compatibility
+                                return charges
+        
+        # Original extraction logic for detailed tariff PDFs
+        # Enhanced patterns for rate summaries
         patterns = {
             "monthly_service": [
-                r"Service and Facility Charge.*?\.+\s*\$(\d+\.?\d*)",
-                r"Basic Service Charge.*?\.+\s*\$(\d+\.?\d*)",
-                r"Customer Charge.*?\.+\s*\$(\d+\.?\d*)"
+                r"Service\s+(?:and\s+Facility\s+)?Charge.*?\$(\d+\.?\d*)",
+                r"Basic\s+Service\s+Charge.*?\$(\d+\.?\d*)",
+                r"Customer\s+Charge.*?\$(\d+\.?\d*)",
+                r"Monthly\s+Service.*?\$(\d+\.?\d*)",
+                # Rate summary specific patterns
+                r"Service\s+&\s+Facility.*?\$(\d+\.?\d*)",
+                r"Serv\s+&\s+Fac\s+Chg.*?\$(\d+\.?\d*)"
             ],
             "demand_charge": [
-                r"Demand Charge.*?\.+\s*\$(\d+\.?\d*)",
-                r"(?:kW|Kilowatt) Charge.*?\.+\s*\$(\d+\.?\d*)"
+                r"Demand\s+Charge.*?\$(\d+\.?\d*)",
+                r"(?:kW|Kilowatt)\s+Charge.*?\$(\d+\.?\d*)",
+                r"Maximum\s+Demand.*?\$(\d+\.?\d*)"
             ]
         }
         
         for charge_type, pattern_list in patterns.items():
             for pattern in pattern_list:
-                match = re.search(pattern, text, re.IGNORECASE)
+                match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
                 if match:
                     charges[charge_type] = float(match.group(1))
                     break
@@ -297,6 +519,25 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
     
     def _extract_effective_date(self, text: str) -> Optional[str]:
         """Extract effective date from Xcel Energy PDF text."""
+        # First try to extract from summary title format "as of MM-DD-YY"
+        summary_date_match = re.search(
+            r"as\s+of\s+(\d{2})-(\d{2})-(\d{2})",
+            text,
+            re.IGNORECASE
+        )
+        if summary_date_match:
+            month, day, year = summary_date_match.groups()
+            # Convert to full date format
+            year = f"20{year}"  # Convert 2-digit year to 4-digit
+            # Convert to standard format
+            months = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ]
+            month_name = months[int(month) - 1]
+            return f"{month_name} {int(day)}, {year}"
+        
+        # Fallback to standard patterns
         date_patterns = [
             r"Effective\s+(\w+\s+\d{1,2},\s+\d{4})",
             r"(?:In\s+)?Effect\s+(\w+\s+\d{1,2},\s+\d{4})",
@@ -315,6 +556,10 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         score = 0
         text_lower = text.lower()
         
+        # Check if this is a rate summary page (highly relevant)
+        if "summary of electric rates" in text_lower or "summary of gas rates" in text_lower:
+            score += 50
+        
         # Xcel-specific scoring
         if "xcel energy" in text_lower:
             score += 20
@@ -327,9 +572,9 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         
         # Look for rate-specific keywords
         rate_keywords = {
-            "residential": ["residential", "schedule r"],
-            "residential_tou": ["time of use", "tou", "schedule re"],
-            "commercial": ["commercial", "schedule c"]
+            "residential": ["residential", "schedule r", "res service"],
+            "residential_tou": ["time of use", "tou", "schedule re", "res tou"],
+            "commercial": ["commercial", "schedule c", "general service"]
         }
         
         keywords = rate_keywords.get(rate_schedule, [])
@@ -342,8 +587,12 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
             score += 10
         if "service charge" in text_lower or "facility charge" in text_lower:
             score += 10
-        if "effective" in text_lower:
+        if "effective" in text_lower or "as of" in text_lower:
             score += 5
+        
+        # Boost score if we see rate tables or structured data
+        if re.search(r"\$\d+\.\d+", text):  # Dollar amounts
+            score += 10
         
         return score
     
@@ -352,6 +601,155 @@ class XcelEnergyPDFExtractor(ProviderDataExtractor):
         pattern = rf"{season}.*?(?=(?:Winter|Summer)|$)"
         match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
         return match.group(0) if match else ""
+    
+    async def _get_bundled_pdf(self, service_type: str) -> Tuple[Optional[Dict[str, Any]], Optional[bytes]]:
+        """Get bundled PDF content and metadata.
+        
+        Automatically handles different source types based on prefix:
+        - file:// - Load from bundled data folder
+        - http:// or https:// - Download from URL
+        
+        Returns:
+            Tuple of (metadata dict, pdf content bytes) or (None, None) if not found
+        """
+        try:
+            # Get the path to the component directory
+            current_file = Path(__file__)
+            component_dir = current_file.parent.parent
+            data_dir = component_dir / "data"
+            
+            # Read sources metadata
+            metadata_file = component_dir / "sources.json"
+            if not metadata_file.exists():
+                _LOGGER.debug("No sources metadata file found")
+                return None, None
+            
+            async with aiofiles.open(metadata_file, "r") as f:
+                content = await f.read()
+                metadata = json.loads(content)
+            
+            # Handle different metadata versions
+            if "providers" in metadata:
+                # Version 3.0 format
+                pdf_entries = metadata.get("providers", {}).get("xcel_energy", {}).get(service_type, [])
+            else:
+                # Older format
+                pdf_entries = metadata.get("pdfs", {}).get("xcel_energy", {}).get(service_type)
+            
+            if not pdf_entries:
+                _LOGGER.debug("No bundled PDF info for %s service", service_type)
+                return None, None
+            
+            # Handle list format (multiple PDFs)
+            if isinstance(pdf_entries, list):
+                # Try each entry in order (sorted by effective date, newest first)
+                for entry in pdf_entries:
+                    source = entry.get("source", "")
+                    
+                    # Determine how to get the PDF based on source prefix
+                    if source.startswith("file://"):
+                        # Load from bundled file
+                        filename = source[7:]  # Remove file:// prefix
+                        pdf_path = data_dir / filename
+                        
+                        if pdf_path.exists():
+                            async with aiofiles.open(pdf_path, "rb") as f:
+                                pdf_content = await f.read()
+                            
+                            # Create consistent info dict
+                            pdf_info = {
+                                "filename": filename,
+                                "effective_date": entry.get("effective_date"),
+                                "description": entry.get("description"),
+                                "source": source
+                            }
+                            
+                            _LOGGER.info("Loaded bundled PDF: %s (%d bytes) - Effective %s", 
+                                       filename, len(pdf_content), 
+                                       entry.get("effective_date", "unknown"))
+                            return pdf_info, pdf_content
+                        else:
+                            _LOGGER.debug("Bundled PDF file not found: %s", pdf_path)
+                    
+                    elif source.startswith(("http://", "https://")):
+                        # This would be handled by the main fetch_tariff_data method
+                        # For bundled PDF loading, we skip URL sources
+                        _LOGGER.debug("Skipping URL source in bundled PDF check: %s", source)
+                        continue
+                    
+                    else:
+                        _LOGGER.warning("Unknown source type: %s", source)
+                
+                _LOGGER.debug("No available bundled PDF files for %s service", service_type)
+                return None, None
+            
+            else:
+                # Old format - single PDF entry (backward compatibility)
+                pdf_info = pdf_entries
+                if not pdf_info.get("filename"):
+                    _LOGGER.debug("No filename in bundled PDF info for %s service", service_type)
+                    return None, None
+                
+                # Check if the PDF file exists
+                pdf_path = data_dir / pdf_info["filename"]
+                if not pdf_path.exists():
+                    _LOGGER.warning("Bundled PDF file not found: %s", pdf_path)
+                    return None, None
+                
+                # Read the PDF content
+                async with aiofiles.open(pdf_path, "rb") as f:
+                    pdf_content = await f.read()
+                
+                _LOGGER.info("Loaded bundled PDF: %s (%d bytes)", pdf_info["filename"], len(pdf_content))
+                return pdf_info, pdf_content
+            
+        except Exception as e:
+            _LOGGER.error("Error loading bundled PDF: %s", str(e))
+            return None, None
+    
+    async def _get_url_sources(self, service_type: str) -> List[Dict[str, Any]]:
+        """Get URL sources from metadata that need to be downloaded.
+        
+        Returns:
+            List of entries with http:// or https:// sources, sorted by effective date
+        """
+        try:
+            # Get the path to the component directory
+            current_file = Path(__file__)
+            component_dir = current_file.parent.parent
+            
+            # Read sources metadata
+            metadata_file = component_dir / "sources.json"
+            if not metadata_file.exists():
+                return []
+            
+            async with aiofiles.open(metadata_file, "r") as f:
+                content = await f.read()
+                metadata = json.loads(content)
+            
+            # Handle different metadata versions
+            if "providers" in metadata:
+                # Version 3.0 format
+                pdf_entries = metadata.get("providers", {}).get("xcel_energy", {}).get(service_type, [])
+            else:
+                # Older format - no URL sources in old format
+                return []
+            
+            if not isinstance(pdf_entries, list):
+                return []
+            
+            # Filter for URL sources only
+            url_sources = []
+            for entry in pdf_entries:
+                source = entry.get("source", "")
+                if source.startswith(("http://", "https://")):
+                    url_sources.append(entry)
+            
+            return url_sources
+            
+        except Exception as e:
+            _LOGGER.error("Error getting URL sources: %s", str(e))
+            return []
 
 
 class XcelEnergyRateCalculator(ProviderRateCalculator):
@@ -465,48 +863,207 @@ class XcelEnergyRateCalculator(ProviderRateCalculator):
 class XcelEnergyDataSource(ProviderDataSource):
     """Xcel Energy data source configuration."""
     
-    BASE_URL = "https://www.xcelenergy.com/staticfiles/xe-responsive/Company/Rates%20&%20Regulations/"
+    BASE_URL = "https://www.xcelenergy.com"
+    STATIC_FILES_URL = "https://www.xcelenergy.com/staticfiles/xe-responsive/Company/Rates%20&%20Regulations/"
+    RATE_BOOKS_URL = "https://www.xcelenergy.com/company/rates_and_regulations/rates/rate_books"
     
-    # Updated URL patterns based on current Xcel Energy website structure
-    STATE_URLS = {
-        "CO": f"{BASE_URL}PSCo_Electric_Entire_Tariff.pdf",  # Public Service Company of Colorado
-        "MI": f"{BASE_URL}MPCO_Electric_Entire_Tariff.pdf",  # Michigan 
-        "MN": f"{BASE_URL}NSP_MN_Electric_Entire_Tariff.pdf",  # Northern States Power - Minnesota
-        "NM": f"{BASE_URL}SPS_NM_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - New Mexico
-        "ND": f"{BASE_URL}NSP_ND_Electric_Entire_Tariff.pdf",  # Northern States Power - North Dakota
-        "SD": f"{BASE_URL}NSP_SD_Electric_Entire_Tariff.pdf",  # Northern States Power - South Dakota
-        "TX": f"{BASE_URL}SPS_TX_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - Texas
-        "WI": f"{BASE_URL}NSP_WI_Electric_Entire_Tariff.pdf",  # Northern States Power - Wisconsin
+    # Static PDF URLs for rate summaries - these are reliable and don't require authentication
+    # Note: These URLs are updated periodically. The integration will try to fetch the latest
+    # from the rate books page, but these serve as reliable fallbacks.
+    RATE_SUMMARY_URLS = {
+        "electric": [
+            # Most recent first (as of 2024)
+            f"{STATIC_FILES_URL}Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
+            f"{STATIC_FILES_URL}Electric_Summation_Sheet_All_Rates_04.01.2024_FINAL.pdf",
+            f"{STATIC_FILES_URL}Electric_Summation_Sheet_All Rates_1.1.2024.pdf",
+            f"{STATIC_FILES_URL}Electric_Summation_Sheet_All_Rates_10.01.23_FINAL.pdf",
+            f"{STATIC_FILES_URL}Electric_Summation_Sheet_All_Rates_07.01.23.pdf",
+        ],
+        "gas": [
+            # Most recent first (as of 2024)
+            f"{STATIC_FILES_URL}Summary_of_Gas_Rates_as_of-04-01-2024.pdf",
+            f"{STATIC_FILES_URL}Summary_of_Gas_Rates_as_of-01-01-2024 (Correction).pdf",
+            f"{STATIC_FILES_URL}Summary_of_Gas_Rates_as_of-10-01-2023.pdf",
+            f"{STATIC_FILES_URL}Summary_of_Gas_Rates_as_of-07-01-2023.pdf",
+        ]
     }
     
-    # Alternative rate book URLs if tariff PDFs fail
-    RATE_BOOK_URLS = {
-        "CO": "https://www.xcelenergy.com/company/rates_and_regulations/rates/rate_books",
-        "MN": "https://www.xcelenergy.com/company/rates_and_regulations/rates/rate_books",
+    # Fallback to full tariff PDFs if summaries fail
+    FULL_TARIFF_URLS = {
+        "CO": f"{STATIC_FILES_URL}PSCo_Electric_Entire_Tariff.pdf",  # Public Service Company of Colorado
+        "MI": f"{STATIC_FILES_URL}MPCO_Electric_Entire_Tariff.pdf",  # Michigan 
+        "MN": f"{STATIC_FILES_URL}NSP_MN_Electric_Entire_Tariff.pdf",  # Northern States Power - Minnesota
+        "NM": f"{STATIC_FILES_URL}SPS_NM_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - New Mexico
+        "ND": f"{STATIC_FILES_URL}NSP_ND_Electric_Entire_Tariff.pdf",  # Northern States Power - North Dakota
+        "SD": f"{STATIC_FILES_URL}NSP_SD_Electric_Entire_Tariff.pdf",  # Northern States Power - South Dakota
+        "TX": f"{STATIC_FILES_URL}SPS_TX_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - Texas
+        "WI": f"{STATIC_FILES_URL}NSP_WI_Electric_Entire_Tariff.pdf",  # Northern States Power - Wisconsin
     }
     
     def get_source_config(self, state: str, service_type: str, rate_schedule: str) -> Dict[str, Any]:
         """Get PDF URL configuration for Xcel Energy.
         
-        Note: Xcel Energy may have newer tariffs behind authentication on their
-        rate books page. The public URLs may contain older versions.
-        Consider using fallback rates for the most accurate current rates.
+        Prioritizes sources.json URLs, then rate summary PDFs which are regularly updated and more focused.
+        Falls back to full tariff PDFs if summaries are not available.
         """
+        # First check sources.json for URL sources
+        try:
+            # Get the path to the component directory
+            current_file = Path(__file__)
+            component_dir = current_file.parent.parent
+            
+            # Read sources metadata
+            metadata_file = component_dir / "sources.json"
+            if metadata_file.exists():
+                with open(metadata_file, "r") as f:
+                    metadata = json.load(f)
+                
+                # Get entries from sources.json
+                if "providers" in metadata:
+                    pdf_entries = metadata.get("providers", {}).get("xcel_energy", {}).get(service_type, [])
+                    
+                    if isinstance(pdf_entries, list) and pdf_entries:
+                        # Look for URL sources
+                        for entry in pdf_entries:
+                            source = entry.get("source", "")
+                            if source.startswith(("http://", "https://")):
+                                _LOGGER.info("Using URL from sources.json: %s", source)
+                                return {
+                                    "url": source,
+                                    "type": "pdf",
+                                    "is_summary": True,
+                                    "note": "Using URL from sources.json"
+                                }
+        except Exception as e:
+            _LOGGER.warning("Error reading sources.json: %s", e)
+        
+        # Fall back to static rate summary from our static list
+        summary_urls = self.RATE_SUMMARY_URLS.get(service_type, [])
+        
+        if summary_urls:
+            # Use the most recent summary (first in list)
+            url = summary_urls[0]
+            return {
+                "url": url,
+                "type": "pdf",
+                "is_summary": True,
+                "note": "Using static rate summary PDF"
+            }
+        
+        # Fallback to full tariff PDFs
         if service_type == "gas":
             # Gas URLs - replace Electric with Gas in the filename
-            base_url = self.STATE_URLS.get(state, "")
+            base_url = self.FULL_TARIFF_URLS.get(state, "")
             if base_url:
                 url = base_url.replace("_Electric_", "_Gas_")
             else:
                 url = ""
         else:
-            url = self.STATE_URLS.get(state, "")
+            url = self.FULL_TARIFF_URLS.get(state, "")
         
         return {
             "url": url,
             "type": "pdf",
-            "note": "PDF may be outdated. Check rate books page for latest version."
+            "is_summary": False,
+            "note": "Using full tariff PDF (may be outdated)"
         }
+    
+    async def get_most_recent_summary_url(self, service_type: str) -> Optional[str]:
+        """Fetch the rate books page and extract the most recent summary URL.
+        
+        This method dynamically finds the latest rate summary by parsing the rate books page.
+        It looks for static PDF files which are more reliable than Salesforce links.
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.RATE_BOOKS_URL) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        
+                        # Use regex to find static PDF links (more reliable than BeautifulSoup for this)
+                        pattern = rf'href="([^"]*staticfiles[^"]*(?:Electric_Summation|Summary_of_{service_type.title()}_Rates)[^"]*\.pdf)"'
+                        matches = re.findall(pattern, html, re.IGNORECASE)
+                        
+                        if matches:
+                            # Extract dates and sort to get most recent
+                            dated_links = []
+                            for href in matches:
+                                # Extract date from filename
+                                date_patterns = [
+                                    r'(\d{2})[.-](\d{2})[.-](\d{4})',  # MM-DD-YYYY
+                                    r'(\d{2})[.-](\d{2})[.-](\d{2})',   # MM-DD-YY
+                                    r'(\d{1,2})[.-](\d{1,2})[.-](\d{4})',  # M-D-YYYY
+                                ]
+                                
+                                for date_pattern in date_patterns:
+                                    date_match = re.search(date_pattern, href)
+                                    if date_match:
+                                        groups = date_match.groups()
+                                        if len(groups) == 3:
+                                            month, day, year = groups
+                                            # Convert 2-digit year to 4-digit
+                                            if len(year) == 2:
+                                                year = f"20{year}"
+                                            try:
+                                                date_obj = datetime(int(year), int(month), int(day))
+                                                # Convert relative URL to absolute
+                                                if href.startswith('/'):
+                                                    full_url = f"{self.BASE_URL}{href}"
+                                                else:
+                                                    full_url = href
+                                                dated_links.append((date_obj, full_url))
+                                                break
+                                            except ValueError:
+                                                continue
+                            
+                            if dated_links:
+                                # Sort by date descending and return most recent
+                                dated_links.sort(key=lambda x: x[0], reverse=True)
+                                most_recent_url = dated_links[0][1]
+                                _LOGGER.info(f"Found most recent {service_type} rate summary: {most_recent_url}")
+                                return most_recent_url
+                            else:
+                                _LOGGER.warning(f"Found {service_type} rate summaries but could not parse dates")
+                        else:
+                            _LOGGER.warning(f"No {service_type} rate summary PDFs found on rate books page")
+                            
+        except Exception as e:
+            _LOGGER.warning("Failed to fetch rate books page: %s", str(e))
+        
+        return None
+    
+    async def get_dynamic_source_config(self, state: str, service_type: str, rate_schedule: str) -> Dict[str, Any]:
+        """Try to get the most recent rate summary dynamically from the rate books page.
+        
+        This method attempts to fetch the latest rate summary URL by scraping the
+        rate books page. If successful, it returns that URL. Otherwise, it falls
+        back to the static configuration.
+        """
+        # Check if we have a bundled PDF first
+        try:
+            extractor = XcelEnergyPDFExtractor()
+            bundled_info, _ = await extractor._get_bundled_pdf(service_type)
+            if bundled_info:
+                _LOGGER.info("Bundled PDF available for %s service", service_type)
+        except Exception:
+            pass
+        
+        # Try to get the most recent URL dynamically
+        latest_url = await self.get_most_recent_summary_url(service_type)
+        
+        if latest_url:
+            return {
+                "url": latest_url,
+                "type": "pdf",
+                "is_summary": True,
+                "note": "Using dynamically fetched rate summary PDF",
+                "use_bundled_fallback": True  # Enable bundled fallback
+            }
+        
+        # Fall back to static configuration
+        config = self.get_source_config(state, service_type, rate_schedule)
+        config["use_bundled_fallback"] = True  # Enable bundled fallback
+        return config
     
     def get_fallback_rates(self, state: str, service_type: str) -> Dict[str, Any]:
         """Get Xcel Energy fallback rates."""

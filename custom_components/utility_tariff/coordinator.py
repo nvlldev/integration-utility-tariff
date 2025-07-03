@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
@@ -128,13 +129,20 @@ class DynamicCoordinator(DataUpdateCoordinator):
         """Initialize dynamic coordinator."""
         self.tariff_manager = tariff_manager
         self.pdf_coordinator = pdf_coordinator
+        self._remove_listeners = []
+        
+        # Get update interval from options, default to 15 seconds
+        update_seconds = tariff_manager.options.get("dynamic_update_interval", 15)
         
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_dynamic",
-            update_interval=timedelta(minutes=1),  # Update every minute for TOU accuracy
+            update_interval=timedelta(seconds=update_seconds),
         )
+        
+        # Track consumption and return entities for immediate updates
+        self._setup_entity_tracking()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Calculate dynamic data."""
@@ -379,15 +387,15 @@ class DynamicCoordinator(DataUpdateCoordinator):
         return {
             "available": True,
             "per_kwh_now": current_rate,
-            "hourly_cost_estimate": round(hourly_cost, 2),
-            "daily_cost_estimate": round(daily_cost, 2),
-            "monthly_cost_estimate": round(monthly_cost + fixed_monthly, 2),
+            "hourly_cost_estimate": hourly_cost,
+            "daily_cost_estimate": daily_cost,
+            "monthly_cost_estimate": monthly_cost + fixed_monthly,
             "fixed_charges_monthly": fixed_monthly,
-            "daily_kwh_used": round(billable_kwh, 2),
-            "daily_kwh_consumed": round(daily_consumption, 2),
-            "daily_kwh_returned": round(daily_return, 2),
-            "net_daily_kwh": round(net_daily_kwh, 2),
-            "daily_credit_estimate": round(daily_credit, 2),
+            "daily_kwh_used": billable_kwh,
+            "daily_kwh_consumed": daily_consumption,
+            "daily_kwh_returned": daily_return,
+            "net_daily_kwh": net_daily_kwh,
+            "daily_credit_estimate": daily_credit,
             "consumption_source": consumption_source,
             "consumption_entity": consumption_entity if consumption_entity != "none" else None,
             "return_source": return_source,
@@ -396,20 +404,24 @@ class DynamicCoordinator(DataUpdateCoordinator):
             "days_in_month": last_day_of_month,
             "day_of_month": day_of_month,
             "days_remaining": days_remaining,
-            "month_to_date_cost": round(mtd_energy_cost, 2),
-            "projected_remaining_cost": round(projected_remaining_energy_cost, 2),
-            "projected_total_cost": round(projected_total_energy_cost + fixed_monthly, 2),
-            "billing_cycle_progress": round((day_of_month / last_day_of_month) * 100, 1),
+            "month_to_date_cost": mtd_energy_cost,
+            "projected_remaining_cost": projected_remaining_energy_cost,
+            "projected_total_cost": projected_total_energy_cost + fixed_monthly,
+            "billing_cycle_progress": (day_of_month / last_day_of_month) * 100,
         }
     
     def _get_entity_daily_value(self, entity_id: str, entity_type: str) -> tuple[float | None, str]:
         """Get daily value from an entity."""
         # First, check if we have internal daily meters
         config_entry_id = None
-        for entry_id, data in self.hass.data[DOMAIN].items():
-            if isinstance(data, dict) and data.get("dynamic_coordinator") == self:
-                config_entry_id = entry_id
-                break
+        if DOMAIN in self.hass.data and isinstance(self.hass.data[DOMAIN], dict):
+            for entry_id, data in self.hass.data[DOMAIN].items():
+                # Skip non-dict entries (like strings)
+                if not isinstance(data, dict):
+                    continue
+                if data.get("dynamic_coordinator") == self:
+                    config_entry_id = entry_id
+                    break
         
         if config_entry_id:
             utility_meters = self.hass.data[DOMAIN][config_entry_id].get("utility_meters", [])
@@ -502,3 +514,58 @@ class DynamicCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             _LOGGER.warning("Could not parse %s entity value: %s", entity_type, state.state)
             return None, "error"
+    
+    def _setup_entity_tracking(self) -> None:
+        """Set up tracking for consumption and return entities."""
+        # Get entities to track
+        consumption_entity = self.tariff_manager.options.get("consumption_entity", "none")
+        return_entity = self.tariff_manager.options.get("return_entity", "none")
+        
+        entities_to_track = []
+        if consumption_entity and consumption_entity != "none":
+            entities_to_track.append(consumption_entity)
+        if return_entity and return_entity != "none":
+            entities_to_track.append(return_entity)
+        
+        if entities_to_track:
+            # Track state changes for immediate updates
+            self._remove_listeners.append(
+                async_track_state_change_event(
+                    self.hass,
+                    entities_to_track,
+                    self._handle_entity_change
+                )
+            )
+            _LOGGER.debug("Tracking entities for immediate updates: %s", entities_to_track)
+    
+    async def _handle_entity_change(self, event) -> None:
+        """Handle changes to tracked entities."""
+        # Only trigger update if the state actually changed to a valid value
+        new_state = event.data.get("new_state")
+        old_state = event.data.get("old_state")
+        
+        if new_state is None:
+            return
+            
+        # Check if the value actually changed
+        if old_state and old_state.state == new_state.state:
+            return
+            
+        # Check if it's a valid numeric value
+        if new_state.state in ["unknown", "unavailable"]:
+            return
+            
+        try:
+            float(new_state.state)
+            # Valid numeric value - trigger immediate update
+            _LOGGER.debug("Entity %s changed to %s, triggering coordinator update", 
+                         new_state.entity_id, new_state.state)
+            await self.async_request_refresh()
+        except (ValueError, TypeError):
+            pass
+    
+    def async_shutdown(self) -> None:
+        """Clean up event listeners."""
+        for remove_listener in self._remove_listeners:
+            remove_listener()
+        self._remove_listeners.clear()

@@ -133,6 +133,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
+        # Clean up coordinators
+        entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
+        if "dynamic_coordinator" in entry_data:
+            dynamic_coordinator = entry_data["dynamic_coordinator"]
+            if hasattr(dynamic_coordinator, "async_shutdown"):
+                dynamic_coordinator.async_shutdown()
+        
         hass.data[DOMAIN].pop(entry.entry_id)
     
     return unload_ok
@@ -218,9 +225,9 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
                     {
                         "kwh_usage": kwh_usage,
                         "days": days,
-                        "energy_cost": round(energy_cost, 2),
-                        "fixed_cost": round(fixed_cost, 2),
-                        "total_bill": round(total_bill, 2),
+                        "energy_cost": energy_cost,
+                        "fixed_cost": fixed_cost,
+                        "total_bill": total_bill,
                         "rate_per_kwh": current_rate,
                     }
                 )
