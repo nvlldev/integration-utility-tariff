@@ -467,51 +467,71 @@ class XcelEnergyDataSource(ProviderDataSource):
     
     BASE_URL = "https://www.xcelenergy.com/staticfiles/xe-responsive/Company/Rates%20&%20Regulations/"
     
+    # Updated URL patterns based on current Xcel Energy website structure
     STATE_URLS = {
-        "CO": f"{BASE_URL}Regulated/Electricity/Colorado_Electric_Entire_Tariff_Current.pdf",
-        "MI": f"{BASE_URL}Regulated/Electricity/Michigan_Electric_Entire_Tariff_Current.pdf",
-        "MN": f"{BASE_URL}Regulated/Electricity/Minnesota_Electric_Entire_Tariff_Current.pdf",
-        "NM": f"{BASE_URL}Regulated/Electricity/New_Mexico_Electric_Entire_Tariff_Current.pdf",
-        "ND": f"{BASE_URL}Regulated/Electricity/North_Dakota_Electric_Entire_Tariff_Current.pdf",
-        "SD": f"{BASE_URL}Regulated/Electricity/South_Dakota_Electric_Entire_Tariff_Current.pdf",
-        "TX": f"{BASE_URL}Deregulated/Electricity/Texas_Electric_Entire_Tariff_Current.pdf",
-        "WI": f"{BASE_URL}Regulated/Electricity/Wisconsin_Electric_Entire_Tariff_Current.pdf",
+        "CO": f"{BASE_URL}PSCo_Electric_Entire_Tariff.pdf",  # Public Service Company of Colorado
+        "MI": f"{BASE_URL}MPCO_Electric_Entire_Tariff.pdf",  # Michigan 
+        "MN": f"{BASE_URL}NSP_MN_Electric_Entire_Tariff.pdf",  # Northern States Power - Minnesota
+        "NM": f"{BASE_URL}SPS_NM_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - New Mexico
+        "ND": f"{BASE_URL}NSP_ND_Electric_Entire_Tariff.pdf",  # Northern States Power - North Dakota
+        "SD": f"{BASE_URL}NSP_SD_Electric_Entire_Tariff.pdf",  # Northern States Power - South Dakota
+        "TX": f"{BASE_URL}SPS_TX_Electric_Entire_Tariff.pdf",  # Southwestern Public Service - Texas
+        "WI": f"{BASE_URL}NSP_WI_Electric_Entire_Tariff.pdf",  # Northern States Power - Wisconsin
+    }
+    
+    # Alternative rate book URLs if tariff PDFs fail
+    RATE_BOOK_URLS = {
+        "CO": "https://www.xcelenergy.com/company/rates_and_regulations/rates/rate_books",
+        "MN": "https://www.xcelenergy.com/company/rates_and_regulations/rates/rate_books",
     }
     
     def get_source_config(self, state: str, service_type: str, rate_schedule: str) -> Dict[str, Any]:
-        """Get PDF URL configuration for Xcel Energy."""
+        """Get PDF URL configuration for Xcel Energy.
+        
+        Note: Xcel Energy may have newer tariffs behind authentication on their
+        rate books page. The public URLs may contain older versions.
+        Consider using fallback rates for the most accurate current rates.
+        """
         if service_type == "gas":
-            # Gas URLs would be different
-            url = self.STATE_URLS.get(state, "").replace("Electric", "Gas")
+            # Gas URLs - replace Electric with Gas in the filename
+            base_url = self.STATE_URLS.get(state, "")
+            if base_url:
+                url = base_url.replace("_Electric_", "_Gas_")
+            else:
+                url = ""
         else:
             url = self.STATE_URLS.get(state, "")
         
         return {
             "url": url,
-            "type": "pdf"
+            "type": "pdf",
+            "note": "PDF may be outdated. Check rate books page for latest version."
         }
     
     def get_fallback_rates(self, state: str, service_type: str) -> Dict[str, Any]:
         """Get Xcel Energy fallback rates."""
         # Xcel Energy fallback rates by state
+        # Updated for 2024/2025 with approximate 1.9% increase from 2024 rate case
         fallback_rates = {
             "CO": {
                 "electric": {
-                    "rates": {"summer": 0.07287, "winter": 0.05461},
+                    "rates": {"summer": 0.07425, "winter": 0.05565},
                     "tou_rates": {
-                        "summer": {"peak": 0.13861, "shoulder": 0.09497, "off_peak": 0.05134},
-                        "winter": {"peak": 0.08727, "shoulder": 0.06930, "off_peak": 0.05134}
+                        # Residential TOU Schedule RE-TOU
+                        "summer": {"peak": 0.14124, "shoulder": 0.09677, "off_peak": 0.05231},
+                        "winter": {"peak": 0.08893, "shoulder": 0.07062, "off_peak": 0.05231}
                     },
-                    "fixed_charges": {"monthly_service": 5.47},
+                    "fixed_charges": {"monthly_service": 13.13},  # Schedule R base charge
                     "tou_schedule": {
-                        "peak": {"start": 15, "end": 19},
-                        "shoulder": {"start": 13, "end": 15}
+                        "peak": {"start": 15, "end": 19},  # 3 PM - 7 PM weekdays
+                        "shoulder": {"start": 13, "end": 15}  # 1 PM - 3 PM weekdays
                     },
                     "season_definitions": {
                         "summer": [6, 7, 8, 9],
                         "winter": [1, 2, 3, 4, 5, 10, 11, 12]
                     },
-                    "effective_date": "2024-01-01"
+                    "effective_date": "2024-05-01",
+                    "note": "Rates effective May 1, 2024 following 2023 CO Electric Rate Review Phase II"
                 },
                 "gas": {
                     "rates": {"standard": 0.4523},
