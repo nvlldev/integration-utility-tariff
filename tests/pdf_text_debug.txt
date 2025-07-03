@@ -1,0 +1,110 @@
+Public Service Company of Colorado
+Electric Rates SummaryEffective April 1, 2025
+Schedule Charge Type Charge 
+Amount GRSA GRSA-EPurchased 
+Capacity Cost  
+Adjustment 
+(PCCA)Demand Side 
+Management 
+Cost 
+Adjustment 
+(DSMCA)Electric 
+Commodity 
+Adjustment 
+(ECA)Transmission 
+Cost 
+Adjustment 
+(TCA)Extraordinary 
+Gas Cost 
+Recovery Rider 
+(EGCRR) EEACTransportation
+Electrification 
+Programs 
+(TEPA)Revenue 
+Decoupling 
+Adjustment Pilot 
+(RDA)RESA/CEPR/C
+EPA Total Monthly Rate
+3.25%
+Residential ( R)
+Service and Facility per Month 7.10               -                     0.81                   0.25708            8.17                                         
+Winter Energy per kWh 0.08570        -                     -                   0.00335             0.00940            0.03113                0.00768               -                       0.00119                  -                          0.00450            0.14295                                   
+Summer Energy per kWh 0.10380        -                     -                   0.00335             0.00940            0.03113                0.00768               -                       0.00119                  (0.00205)                 0.00502            0.15952                                   
+Residential Energy Time-Of-Use
+   (RE-TOU)
+Service and Facility per Month 7.10               -                     0.81                   0.25708            8.17                                         
+Winter On-Peak Energy per kWh 0.13171        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02288
+           0.22996                                   
+Winter Shoulder Energy per kWh 0.10460        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02200            0.18646                                   
+Winter Off-Peak Energy per kWh 0.07749        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02112            0.14296                                   
+Summer On-Peak Energy per kWh 0.20915        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02540            0.35424                                   
+Summer Shoulder Energy per kWh 0.14332        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02326            0.24860                                   
+Summer Off-Peak Energy per kWh 0.07749        -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% (0.00265)                 0.02103            0.14022                                   
+Residential General Opt-Out (R-OO) Service and Facility per Month 7.10               -                     0.81                   0.25708            8.17                                         
+Winter Energy per kWh 0.08570         -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02138            0.15612                                   
+Summer Energy per kWh 0.10380         -                     -                   3.62% 10.16% 33.87% 8.30% -                       1.29% -                          0.02197            0.18517                                   
+Residential Demand (RD)
+Service and Facility per Month 14.50             -                     -                     -                    -                        -                       0.81                   0.49758            15.81                                       
+Winter Demand per kW 12.48             -                     1.27                   3.55                  -                        2.90                     0.45                        0.67096            21.32                                       
+Summer Demand per kW 16.21             -                     1.27                   3.55                  -                        2.90                     0.45                        0.79218            25.17                                       
+Energy per kWh 0.02390        -                     -                   -                     -                    0.03113                -                       -                       0.00179            0.05682                                   
+Small Commercial ( C)
+Service and Facility per Month 12.00             -                     -                     -                    -                        -                       0.81                   0.41633            13.23                                       
+Winter Energy per kWh 0.06058        -                     -                   0.00272             0.00743            0.03330                0.00609               -                       0.00161                  (0.00246)                 0.00355            0.11282                                   
+Summer Energy per kWh 0.10092        -                     -                   0.00272             0.00743            0.03330                0.00609               -                       0.00161                  (0.00246)                 0.00486            0.15447                                   
+ Small Commercial Time-Of-Use   (C-TOU)
+Service and Facility per Month 12.00             -                     0.81                   0.41633            13.23                                       
+Winter On-Peak Energy per kWh 0.10191        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02562            0.19527                                   
+Winter Shoulder Energy per kWh 0.08094        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02494            0.15917                                   
+Winter Off-Peak Energy per kWh 0.05998        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02426            0.12309                                   
+Summer On-Peak Energy per kWh 0.16181        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02757            0.29838                                   
+Summer Shoulder Energy per kWh 0.11089        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02591            0.21072                                   
+Summer Off-Peak Energy per kWh 0.05998        -                     -                   3.65% 9.96% 44.96% 8.16% -                       2.16% (0.00246)                 0.02426            0.12309                                   
+Secondary General (SG)
+Service and Facility per Month 88.07             0.00% -                     -                    -                        -                       0.81                   2.88860            91.77                                       
+Distribution Demand per kW 9.36               0.00% -                     -                    -                        -                       0.30420            9.66                                         
+Winter Generat ion & Transm ission 
+   Demand per kW 9.11               0.00% 0.85                   2.16                  -                        1.80                     0.54                        0.46995            14.93                                       
+Summer Generat ion & Transm ission 
+   Demand per kW 15.14             0.00% 0.85                   2.16                  -                        1.80                     0.54                        0.66593            21.16                                       
+Energy per kWh 0.00853        0.00% -                   -                     -                    0.03342                -                       -                       0.00136            0.04331                                   
+ Secondary General Low-Load Facto r   (SGL)
+Service and Facility per Month 88.07             0.00% -                     -                    -                        -                       0.81                   2.88860            91.77                                       
+Distribution Demand per kW 9.36               0.00% -                     -                    -                        -                       0.30420            9.66                                         
+Winter Energy per kWh 0.11763        0.00% -                   0.01065             0.02704            0.03342                0.02253               -                       0.00671                  0.00708            0.22506                                   
+Summer Energy per kWh 0.16804        0.00% -                   0.01065             0.02704            0.03342                0.02253               -                       0.00671                  0.00872            0.27711                                   
+Secondary Voltaic Time-of-Use Service Section A (SPVTOU-A)
+Service and Facility per Month 88.07             0.00% -                     -                    -                        -                       0.81                   2.88860            91.77                                       
+Distribution Demand per kW 9.36               0.00% 0.85                   2.16                  -                        1.80                     0.54                        0.47808            15.19                                       
+On Peak Energy per kWh 0.15114        0.00% -                   -                     -                    0.03768                -                       -                       0.00614            0.19496                                   
+Off Peak Energy per kWh 0.02675        0.00% -                   -                     -                    0.03015                -                       -                       0.00185            0.05875                                   
+Secondary Voltaic Time-of-Use Service Section B (SPVTOU-B)
+Service and Facility per Month 88.07             0.00% -                     -                    -                        -                       0.81                   2.88860            91.77                                       
+Distribution Demand per kW 9.36               0.00% 0.30420            9.66                                         
+Winter Generat ion & Transm ission 
+   Demand per kW 2.78               0.00% 0.85                   2.16                  -                        1.80                     0.54                        0.26423            8.39                                         
+Summer Generat ion & Transm ission 
+   Demand per kW 3.94               0.00% 0.85                   2.16                  -                        1.80                     0.54                        0.30193            9.59                                         
+On Peak Energy per kWh 0.11945        0.00% -                   -                     -                    0.03768                -                       -                       0.00511            0.16224                                   
+Off Peak Energy per kWh 0.02115        0.00% -                   -                     -                    0.03015                -                       -                       0.00167            0.05297                                   
+Primary General (PG)
+Service and Facility per Month 894.00           0.00% -                     -                    -                        -                       0.81                   29.08133         923.89                                     
+Distribution Demand per kW 5.61               0.00% -                     -                    -                        -                       0.18233            5.79                                         
+Winter Generat ion & Transm ission 
+   Demand per kW 10.83             0.00% 0.91                   1.94                  -                        1.47                     0.38                        0.50473            16.03                                       
+Summer Generat ion & Transm ission 
+   Demand per kW 16.15             0.00% 0.91                   1.94                  -                        1.47                     0.38                        0.67763            21.53                                       
+On-Peak Energy per kWh 0.00701        0.00% -                   -                     -                    0.03821                -                       -                       0.00147            0.04669                                   
+Off-Peak Energy per kWh 0.00701         0.00% -                   -                     -                    0.03057                -                       -                       0.00122            0.03880                                   
+Transmission General (TG)
+Service and Facility per Month -                 0.00% -                     -                    -                        -                       0.81                   0.02633            Customer Specific
+Winter Generat ion & Transm ission
+   Demand per kW 8.50               0.00% 0.79                   1.74                  -                        0.99                     0.06                        0.39260            12.47                                       
+Summer Generat ion & Transm ission
+   Demand per kW 14.16             0.00% 0.79                   1.74                  -                        0.99                     0.06                        0.57655            18.32                                       
+On-Peak Energy per kWh 0.00767        0.00% -                   -                     -                    0.03687                -                       -                       0.00145            0.04599                                   
+Off-Peak Energy per kWh 0.00767         0.00% -                   -                     -                    0.02949                -                       -                       0.00121            0.03837                                   
+The rates and charges included in this Electric Rates Summary are currently in effect as approved by the Colorado Public Utilit ies Commission and are subject to change.    
+The rates and charges included in this Electric Rates Summary do not include franchise fees or taxes and are for customer infor mation only. 
+Rate and charge changes are generally effective at the beginning of each month. Due to cycle b illing, customer's monthly bills may differ from the Total Monthly Rate.
+More information concerning Public Service Company of Colorado's electric rates can be found on xcelenergy.com

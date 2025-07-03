@@ -11,6 +11,7 @@ A comprehensive Home Assistant integration for tracking electricity and gas rate
 - **Net Metering**: Solar export tracking and grid credit calculations
 - **Predicted Bills**: Monthly bill predictions based on usage patterns
 - **Multiple Data Sources**: Supports PDF parsing, API integration, HTML scraping, CSV imports, and real-time pricing
+- **Bundled PDFs**: Reliable fallback with bundled rate sheets when downloads fail
 - **Fallback Rates**: Built-in fallback rates when PDFs are unavailable
 - **Repair Flow**: Graceful error handling with user-friendly recovery options
 
@@ -170,6 +171,37 @@ The integration supports multiple data source types:
 - Some sensors only appear for TOU rate plans
 - Net metering sensors require return entity configuration
 - Cost sensors can be disabled in options
+
+## Bundled PDF Support
+
+The integration includes bundled PDF files for improved reliability. When the integration cannot download PDFs from utility websites (due to network issues, website changes, or authentication requirements), it automatically falls back to bundled PDFs.
+
+### Benefits
+- **Reliability**: Works even when utility websites are down
+- **Faster Setup**: No download delays on initial configuration
+- **Offline Support**: Functions without internet connection
+- **Version Control**: Bundled PDFs are tracked and tested
+
+### How It Works
+1. The integration first attempts to download the latest PDF from the utility
+2. If download fails, it uses the bundled PDF as fallback
+3. The Data Source sensor indicates when using bundled PDFs
+
+### Updating Bundled PDFs
+For maintainers who want to update bundled PDFs:
+
+1. Download the latest rate sheet from the utility website
+2. Use the bundling script:
+   ```bash
+   python scripts/bundle_pdf.py xcel_energy electric --url https://www.xcelenergy.com/path/to/pdf
+   ```
+3. The script will:
+   - Download the PDF
+   - Calculate its hash
+   - Update metadata
+   - Place it in the correct location
+
+See [custom_components/utility_tariff/data/README.md](custom_components/utility_tariff/data/README.md) for detailed instructions.
 
 ## Contributing
 
