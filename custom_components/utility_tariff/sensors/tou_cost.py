@@ -38,7 +38,7 @@ class UtilityTOUPeakCostSensor(UtilitySensorBase):
         peak_rate = all_rates.get("peak", 0.0)
         
         # Calculate cost
-        return round(peak_consumption * peak_rate, 2)
+        return peak_consumption * peak_rate
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -89,7 +89,7 @@ class UtilityTOUShoulderCostSensor(UtilitySensorBase):
         shoulder_rate = all_rates.get("shoulder", 0.0)
         
         # Calculate cost
-        return round(shoulder_consumption * shoulder_rate, 2)
+        return shoulder_consumption * shoulder_rate
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -140,7 +140,7 @@ class UtilityTOUOffPeakCostSensor(UtilitySensorBase):
         off_peak_rate = all_rates.get("off-peak", 0.0)
         
         # Calculate cost
-        return round(off_peak_consumption * off_peak_rate, 2)
+        return off_peak_consumption * off_peak_rate
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -200,7 +200,7 @@ class UtilityTotalEnergyCostSensor(UtilitySensorBase):
                     elif meter._tou_period == "off_peak":
                         off_peak_cost = consumption * all_rates.get("off-peak", 0.0)
             
-            return round(peak_cost + shoulder_cost + off_peak_cost, 2)
+            return peak_cost + shoulder_cost + off_peak_cost
         else:
             # Non-TOU: simple calculation
             meters = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id, {}).get("utility_meters", [])
@@ -212,7 +212,7 @@ class UtilityTotalEnergyCostSensor(UtilitySensorBase):
                     break
             
             current_rate = self.coordinator.data.get("current_rate", 0.0)
-            return round(total_consumption * current_rate, 2)
+            return total_consumption * current_rate
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -235,7 +235,7 @@ class UtilityTotalEnergyCostSensor(UtilitySensorBase):
                     
                     period_data[f"{period}_consumption_kwh"] = consumption
                     period_data[f"{period}_rate"] = rate
-                    period_data[f"{period}_cost"] = round(cost, 2)
+                    period_data[f"{period}_cost"] = cost
                     total_consumption += consumption
             
             period_data["total_consumption_kwh"] = total_consumption

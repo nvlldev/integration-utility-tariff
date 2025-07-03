@@ -36,9 +36,9 @@ class UtilityGridCreditSensor(UtilitySensorBase):
         attrs = {}
         if costs.get("available"):
             excess_return = max(0, costs.get("daily_kwh_returned", 0) - costs.get("daily_kwh_consumed", 0))
-            attrs["excess_export_kwh"] = round(excess_return, 2)
+            attrs["excess_export_kwh"] = excess_return
             attrs["export_rate"] = costs.get("per_kwh_now")
-            attrs["monthly_credit_estimate"] = round(costs.get("daily_credit_estimate", 0) * 30, 2)
+            attrs["monthly_credit_estimate"] = costs.get("daily_credit_estimate", 0) * 30
             attrs["return_source"] = costs.get("return_source")
             if costs.get("return_entity"):
                 attrs["return_entity"] = costs.get("return_entity")

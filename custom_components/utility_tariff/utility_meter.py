@@ -34,6 +34,7 @@ class UtilityTariffMeter(SensorEntity, RestoreEntity):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_icon = "mdi:meter-electric-outline"
+    _attr_suggested_display_precision = 3
     
     def __init__(
         self,
@@ -88,7 +89,7 @@ class UtilityTariffMeter(SensorEntity, RestoreEntity):
     @property
     def native_value(self) -> StateType:
         """Return the current meter value."""
-        return round(self._total_consumed, 3)
+        return self._total_consumed
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -424,6 +425,7 @@ class UtilityTariffTOUMeter(SensorEntity, RestoreEntity):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_icon = "mdi:meter-electric-outline"
+    _attr_suggested_display_precision = 3
     
     def __init__(
         self,
@@ -479,7 +481,7 @@ class UtilityTariffTOUMeter(SensorEntity, RestoreEntity):
     @property
     def native_value(self) -> StateType:
         """Return the current meter value."""
-        return round(self._total_consumed, 3)
+        return self._total_consumed
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

@@ -151,7 +151,7 @@ class UtilityEnergyDeliveredTotalSensor(UtilitySensorBase, RestoreEntity):
     @property
     def native_value(self) -> StateType:
         """Return cumulative energy delivered for utility meter tracking."""
-        return round(self._cumulative_received, 3)
+        return self._cumulative_received
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -309,7 +309,7 @@ class UtilityEnergyReceivedTotalSensor(UtilitySensorBase, RestoreEntity):
     @property
     def native_value(self) -> StateType:
         """Return cumulative energy received for utility meter tracking."""
-        return round(self._cumulative_received, 3)
+        return self._cumulative_received
     
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
