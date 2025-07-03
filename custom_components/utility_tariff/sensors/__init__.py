@@ -33,6 +33,12 @@ from .charge import (
     UtilityTotalAdditionalChargesSensor,
 )
 from .credit import UtilityGridCreditSensor
+from .tou_cost import (
+    UtilityTOUPeakCostSensor,
+    UtilityTOUShoulderCostSensor,
+    UtilityTOUOffPeakCostSensor,
+    UtilityTotalEnergyCostSensor,
+)
 
 __all__ = [
     "UtilitySensorBase",
@@ -56,4 +62,8 @@ __all__ = [
     "UtilityFixedChargeSensor",
     "UtilityTotalAdditionalChargesSensor",
     "UtilityGridCreditSensor",
+    "UtilityTOUPeakCostSensor",
+    "UtilityTOUShoulderCostSensor",
+    "UtilityTOUOffPeakCostSensor",
+    "UtilityTotalEnergyCostSensor",
 ]

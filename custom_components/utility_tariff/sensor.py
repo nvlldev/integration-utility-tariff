@@ -32,6 +32,10 @@ from .sensors import (
     UtilityTotalAdditionalChargesSensor,
     UtilityEffectiveDateSensor,
     UtilityGridCreditSensor,
+    UtilityTOUPeakCostSensor,
+    UtilityTOUShoulderCostSensor,
+    UtilityTOUOffPeakCostSensor,
+    UtilityTotalEnergyCostSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +68,14 @@ async def async_setup_entry(
             UtilityShoulderRateSensor(dynamic_coordinator, config_entry),
             UtilityOffPeakRateSensor(dynamic_coordinator, config_entry),
         ])
+        
+        # TOU Cost sensors (if cost sensors enabled)
+        if config_entry.options.get("enable_cost_sensors", True):
+            sensors.extend([
+                UtilityTOUPeakCostSensor(dynamic_coordinator, config_entry),
+                UtilityTOUShoulderCostSensor(dynamic_coordinator, config_entry),
+                UtilityTOUOffPeakCostSensor(dynamic_coordinator, config_entry),
+            ])
     
     # Cost projection sensors (if enabled)
     if config_entry.options.get("enable_cost_sensors", True):
@@ -71,6 +83,7 @@ async def async_setup_entry(
             UtilityHourlyCostSensor(dynamic_coordinator, config_entry),
             UtilityDailyCostSensor(dynamic_coordinator, config_entry),
             UtilityMonthlyCostSensor(dynamic_coordinator, config_entry),
+            UtilityTotalEnergyCostSensor(dynamic_coordinator, config_entry),
         ])
     
     # Net metering sensors (if return entity configured)
