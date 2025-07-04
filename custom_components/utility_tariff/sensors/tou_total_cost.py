@@ -63,7 +63,7 @@ class UtilityTOUTotalCostSensor(SensorEntity, RestoreEntity):
         
         # Set up entity attributes
         self._attr_name = "Total Energy Cost"
-        self._attr_unique_id = f"{config_entry.entry_id}_tou_total_cost"
+        self._attr_unique_id = f"{config_entry.entry_id}_total_energy_cost"
         self._attr_has_entity_name = True
         
         self._attr_device_info = {
