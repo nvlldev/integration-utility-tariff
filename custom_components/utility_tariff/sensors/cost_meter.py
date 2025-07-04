@@ -339,7 +339,7 @@ class UtilityTOUPeakCostMeter(UtilityTariffCostMeter):
             source_meter_entity=peak_meter.entity_id,
             coordinator=coordinator,
             name="Peak Period Cost",
-            unique_id_suffix="tou_peak_cost_meter",
+            unique_id_suffix="tou_peak_cost",
             tou_period="peak",
             meter_type="energy_delivered"
         )
@@ -370,7 +370,7 @@ class UtilityTOUShoulderCostMeter(UtilityTariffCostMeter):
             source_meter_entity=shoulder_meter.entity_id,
             coordinator=coordinator,
             name="Shoulder Period Cost",
-            unique_id_suffix="tou_shoulder_cost_meter",
+            unique_id_suffix="tou_shoulder_cost",
             tou_period="shoulder",
             meter_type="energy_delivered"
         )
@@ -401,7 +401,7 @@ class UtilityTOUOffPeakCostMeter(UtilityTariffCostMeter):
             source_meter_entity=off_peak_meter.entity_id,
             coordinator=coordinator,
             name="Off-Peak Period Cost",
-            unique_id_suffix="tou_off_peak_cost_meter",
+            unique_id_suffix="tou_off_peak_cost",
             tou_period="off_peak",
             meter_type="energy_delivered"
         )
@@ -439,7 +439,7 @@ class UtilityTotalEnergyCostMeter(UtilityTariffCostMeter):
                 source_meter_entity=total_meter.entity_id,
                 coordinator=coordinator,
                 name="Total Energy Cost",
-                unique_id_suffix="total_energy_cost_meter",
+                unique_id_suffix="total_energy_cost",
                 rate_key="current_rate",
                 meter_type="energy_delivered"
             )
